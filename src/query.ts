@@ -136,6 +136,38 @@ export class Select<
     });
   }
 
+  leftJoin<
+    FromTableName extends keyof AllTablesInDB,
+    FromTable extends AllTablesInDB[FromTableName],
+    NewTablesInScope extends TablesInScope & {
+      [k in FromTableName]: MakeTableDefNullable<FromTable>;
+    }
+  >(
+    t: FromTableName,
+    makeExpr: (scope: {
+      [t in keyof NewTablesInScope]: {
+        [f in keyof NewTablesInScope[t]["fields"]]: Expr<
+          GetTypeFromField<NewTablesInScope[t]["fields"][f]>
+        >;
+      };
+    }) => Expr<boolean>
+  ): Select<AllTablesInDB, NewTablesInScope, Returns> {
+    const table = this.db.tables[t] as FromTable;
+    const newTableInScope = { [t]: this.db.tables[t] } as unknown as {
+      [k in FromTableName]: MakeTableDefNullable<FromTable>;
+    };
+    const newTablesInScope = {
+      ...this.contents.tablesInScope,
+      ...newTableInScope,
+    } as NewTablesInScope;
+    const expr = makeExpr(makeScopeObjFromTablesInScope(newTablesInScope));
+    return new Select(this.db, {
+      ...this.contents,
+      tablesInScope: newTablesInScope,
+      joins: this.contents.joins.concat({ table, type: "LEFT", on: expr }),
+    });
+  }
+
   where(
     cb: (scope: {
       [t in keyof TablesInScope]: {
@@ -234,6 +266,12 @@ export type TableDef<
   readonly primaryKey: (keyof Fields)[];
   readonly defaults: (keyof Fields)[];
 };
+
+type MakeTableDefNullable<A> = A extends TableDef<infer Name, infer Fields>
+  ? TableDef<Name, { [f in keyof Fields]: MakeFieldNullable<Fields[f]> }>
+  : never;
+
+type MakeFieldNullable<A> = A extends Field<infer T> ? Field<T | null> : never;
 
 export type DB<
   AllTablesInDB extends {

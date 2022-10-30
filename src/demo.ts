@@ -19,11 +19,25 @@ export const demoDb: DB<DemoDb> = {
       primaryKey: ["id"],
       defaults: [],
     },
+    addresses: {
+      name: "addresses",
+      schema: "public",
+      fields: {
+        id: { name: "id" },
+        user_id: { name: "user_id" },
+      },
+      primaryKey: ["id"],
+      defaults: [],
+    },
   },
   views: [],
 };
 
-type DemoDb = { users: usersTable; emails: emailsTable };
+type DemoDb = {
+  users: usersTable;
+  emails: emailsTable;
+  addresses: addressesTable;
+};
 
 type usersTable = {
   name: "users";
@@ -35,6 +49,17 @@ type usersTable = {
 
 type emailsTable = {
   name: "emails";
+  schema: "public";
+  fields: {
+    id: Field<number>;
+    user_id: Field<number>;
+  };
+  primaryKey: ["id"];
+  defaults: [];
+};
+
+type addressesTable = {
+  name: "addresses";
   schema: "public";
   fields: {
     id: Field<number>;
