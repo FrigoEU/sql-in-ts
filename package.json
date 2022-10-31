@@ -7,11 +7,13 @@
   ],
   "dependencies": {
     "@js-joda/core": "^4.3.1",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "postgres": "^3.3.1"
   },
   "scripts": {
     "check": "tsc -p . --noEmit",
-    "start": "node esbuild.js && node ./out/index.js"
+    "start": "node esbuild.js && node ./out/index.js",
+    "debug": "node esbuild.js && node --inspect-brk ./out/index.js"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.182",

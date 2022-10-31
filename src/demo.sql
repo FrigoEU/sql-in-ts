@@ -1,0 +1,12 @@
+BEGIN TRANSACTION;
+CREATE TABLE users (id INT8 PRIMARY KEY);
+CREATE TABLE emails (
+    id       INT8 PRIMARY KEY,
+    user_id  INT8 NOT NULL REFERENCES users (id),
+    verified BOOL NOT NULL
+);
+CREATE TABLE addresses (
+    id      INT8 PRIMARY KEY,
+    user_id INT8 NOT NULL REFERENCES users (id)
+);
+COMMIT TRANSACTION;

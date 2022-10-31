@@ -1,5 +1,25 @@
+import postgres from "postgres";
+
+const encoders = {
+  boolean: {
+    deserialize: function (b: Buffer) {
+      // can probably optim this
+      return b.toString("utf8") === "t" ? true : false;
+    },
+  },
+  int: {
+    deserialize: function (b: Buffer) {
+      // can maybe optim this
+      return +b.toString("utf8");
+    },
+  },
+};
+
+type pgtype = keyof typeof encoders;
+
 export function eq<A>(left: Expr<A>, right: Expr<A>): Expr<boolean> {
   return {
+    ...encoders.boolean,
     tag: "binaryOp",
     left,
     right,
@@ -9,6 +29,7 @@ export function eq<A>(left: Expr<A>, right: Expr<A>): Expr<boolean> {
 
 export function not(val: Expr<boolean>): Expr<boolean> {
   return {
+    ...encoders.boolean,
     tag: "unaryOp",
     val,
     operatorName: "NOT",
@@ -21,10 +42,15 @@ export const op = {
 };
 
 export function val<A>(a: A): Expr<A> {
-  return { tag: "value", val: a };
+  // TODO need serialization and maybe also escaping
+  return {
+    tag: "value",
+    val: a,
+    deserialize: null as any /* TODO */,
+  };
 }
 
-export type Expr<A> =
+type ExprSum<A> =
   | { tag: "value"; val: A }
   | {
       tag: "unaryOp";
@@ -43,6 +69,12 @@ export type Expr<A> =
       tableSchema: string;
       field: Field<A>;
     };
+
+export type Expr<A> = ExprSum<A> & Encoder<A>;
+
+type Encoder<A> = {
+  deserialize: (b: Buffer) => A;
+};
 
 type GetTypeFromExpr<F> = F extends Expr<infer T> ? T : never;
 
@@ -229,6 +261,31 @@ export class Select<
         this.contents.where.map(exprToSql).join("\n  AND "),
     ].join("\n");
   }
+
+  run(pg: postgres.Sql<any>): Promise<Returns[]> {
+    const sqlText = this.toSql();
+    console.log("Running query: ");
+    console.log(sqlText);
+    return pg
+      .unsafe(sqlText, undefined /* params */, { prepare: true })
+      .raw()
+      .then((res) => this.deserializeResults(res));
+  }
+
+  private deserializeResults(rawRows: Buffer[][]): Returns[] {
+    debugger;
+    const names = object_keys(this.contents.returns);
+    const self = this;
+    return rawRows.map(function (cols) {
+      const returnRow: Returns = {} as Returns;
+      for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        const returnsExpr = self.contents.returns[name];
+        returnRow[name] = returnsExpr.deserialize(cols[i]);
+      }
+      return returnRow;
+    });
+  }
 }
 
 function exprToSql(expr: Expr<any>): string {
@@ -253,6 +310,7 @@ function exprToSql(expr: Expr<any>): string {
 
 export type Field<T> = {
   name: string;
+  type: pgtype;
 };
 type GetTypeFromField<F> = F extends Field<infer T> ? T : never;
 
@@ -456,7 +514,9 @@ function makeScopeObjFromTablesInScope<
     };
     for (let columnName of object_keys(tableDef.fields)) {
       const col = tableDef.fields[columnName];
+      const encoder = encoders[col.type];
       tableOfExprs[columnName] = {
+        ...encoder,
         tag: "column",
         tableName: tableDef.name,
         tableSchema: tableDef.schema,
