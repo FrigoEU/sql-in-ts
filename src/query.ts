@@ -17,37 +17,27 @@ const encoders = {
 
 type pgtype = keyof typeof encoders;
 
-export function eq<A>(left: Expr<A>, right: Expr<A>): Expr<boolean> {
-  return {
-    ...encoders.boolean,
-    tag: "binaryOp",
-    left,
-    right,
-    operatorName: "=",
-  };
-}
-
-export function not(val: Expr<boolean>): Expr<boolean> {
-  return {
-    ...encoders.boolean,
+export function NOT(val: BooleanExpr): BooleanExpr {
+  return new BooleanExpr({
     tag: "unaryOp",
     val,
     operatorName: "NOT",
-  };
+  });
 }
 
 export const op = {
-  eq,
-  not,
+  NOT,
 };
 
 export function val<A>(a: A): Expr<A> {
   // TODO need serialization and maybe also escaping
-  return {
-    tag: "value",
-    val: a,
-    deserialize: null as any /* TODO */,
-  };
+  return new Expr(
+    { deserialize: null as any /* not important*/ },
+    {
+      tag: "value",
+      val: a,
+    }
+  );
 }
 
 type ExprSum<A> =
@@ -70,7 +60,72 @@ type ExprSum<A> =
       field: Field<A>;
     };
 
-export type Expr<A> = ExprSum<A> & Encoder<A>;
+// export type Expr<A> = ExprSum<A> & Encoder<A>;
+
+class Expr<A> {
+  public readonly exprSum: ExprSum<A>;
+  public readonly encoder: Encoder<A>;
+  constructor(encoder: Encoder<A>, exprSum: ExprSum<A>) {
+    this.exprSum = exprSum;
+    this.encoder = encoder;
+  }
+
+  public EQ(right: Expr<A>): BooleanExpr {
+    return new BooleanExpr({
+      tag: "binaryOp",
+      left: this,
+      right,
+      operatorName: "=",
+    });
+  }
+
+  public toSql(): string {
+    return exprToSql(this);
+  }
+}
+
+class BooleanExpr extends Expr<boolean> {
+  constructor(exprSum: ExprSum<boolean>) {
+    super(encoders.boolean, exprSum);
+  }
+  public AND(right: BooleanExpr): BooleanExpr {
+    const self = this;
+    return new BooleanExpr({
+      left: self,
+      right: right,
+      tag: "binaryOp",
+      operatorName: "AND",
+    });
+  }
+  public OR(right: BooleanExpr): BooleanExpr {
+    const self = this;
+    return new BooleanExpr({
+      left: self,
+      right: right,
+      tag: "binaryOp",
+      operatorName: "OR",
+    });
+  }
+}
+
+export function AND(...preds: [BooleanExpr, BooleanExpr, ...BooleanExpr[]]) {
+  return preds.slice(2).reduce(
+    (acc, pred) => {
+      return new BooleanExpr({
+        left: acc,
+        right: pred,
+        tag: "binaryOp",
+        operatorName: "AND",
+      });
+    },
+    new BooleanExpr({
+      left: preds[0],
+      right: preds[1],
+      tag: "binaryOp",
+      operatorName: "AND",
+    })
+  );
+}
 
 type Encoder<A> = {
   deserialize: (b: Buffer) => A;
@@ -118,7 +173,7 @@ export class Select<
     this.contents = contents || ({} as TablesInScope);
   }
 
-  from<FromTableName extends keyof AllTablesInDB>(
+  FROM<FromTableName extends keyof AllTablesInDB>(
     t: FromTableName
   ): Select<
     AllTablesInDB,
@@ -136,7 +191,7 @@ export class Select<
     });
   }
 
-  innerJoin<
+  JOIN<
     FromTableName extends keyof AllTablesInDB,
     FromTable extends AllTablesInDB[FromTableName],
     NewTablesInScope extends TablesInScope & {
@@ -168,10 +223,13 @@ export class Select<
     });
   }
 
-  leftJoin<
+  JOIN_LEFT<
     FromTableName extends keyof AllTablesInDB,
     FromTable extends AllTablesInDB[FromTableName],
     NewTablesInScope extends TablesInScope & {
+      [k in FromTableName]: FromTable;
+    },
+    NewTablesInScopeNullable extends TablesInScope & {
       [k in FromTableName]: MakeTableDefNullable<FromTable>;
     }
   >(
@@ -183,24 +241,33 @@ export class Select<
         >;
       };
     }) => Expr<boolean>
-  ): Select<AllTablesInDB, NewTablesInScope, Returns> {
+  ): Select<AllTablesInDB, NewTablesInScopeNullable, Returns> {
     const table = this.db.tables[t] as FromTable;
     const newTableInScope = { [t]: this.db.tables[t] } as unknown as {
+      [k in FromTableName]: FromTable;
+    };
+    const newTableInScopeNullable = {
+      [t]: this.db.tables[t], // TODO make expressions nullable (= Change encoder?)
+    } as unknown as {
       [k in FromTableName]: MakeTableDefNullable<FromTable>;
     };
     const newTablesInScope = {
       ...this.contents.tablesInScope,
       ...newTableInScope,
     } as NewTablesInScope;
+    const newTablesInScopeNullable = {
+      ...this.contents.tablesInScope,
+      ...newTableInScopeNullable,
+    } as NewTablesInScopeNullable;
     const expr = makeExpr(makeScopeObjFromTablesInScope(newTablesInScope));
     return new Select(this.db, {
       ...this.contents,
-      tablesInScope: newTablesInScope,
+      tablesInScope: newTablesInScopeNullable,
       joins: this.contents.joins.concat({ table, type: "LEFT", on: expr }),
     });
   }
 
-  where(
+  WHERE(
     cb: (scope: {
       [t in keyof TablesInScope]: {
         [f in keyof TablesInScope[t]["fields"]]: Expr<
@@ -218,7 +285,7 @@ export class Select<
     });
   }
 
-  project<NewReturns extends { [columnname: string]: any }>(
+  PROJECT<NewReturns extends { [columnname: string]: any }>(
     cb: (scope: {
       [t in keyof TablesInScope]: {
         [f in keyof TablesInScope[t]["fields"]]: Expr<
@@ -281,7 +348,7 @@ export class Select<
       for (let i = 0; i < names.length; i++) {
         const name = names[i];
         const returnsExpr = self.contents.returns[name];
-        returnRow[name] = returnsExpr.deserialize(cols[i]);
+        returnRow[name] = returnsExpr.encoder.deserialize(cols[i]);
       }
       return returnRow;
     });
@@ -289,22 +356,28 @@ export class Select<
 }
 
 function exprToSql(expr: Expr<any>): string {
-  if (expr.tag === "column") {
-    return expr.tableSchema + "." + expr.tableName + "." + expr.field.name;
-  } else if (expr.tag === "unaryOp") {
-    return expr.operatorName + ` (${exprToSql(expr.val)})`;
-  } else if (expr.tag === "binaryOp") {
+  if (expr.exprSum.tag === "column") {
     return (
-      exprToSql(expr.left) +
-      " " +
-      expr.operatorName +
-      " " +
-      exprToSql(expr.right)
+      expr.exprSum.tableSchema +
+      "." +
+      expr.exprSum.tableName +
+      "." +
+      expr.exprSum.field.name
     );
-  } else if (expr.tag === "value") {
-    return expr.val; // TODO we need escaping here probably?
+  } else if (expr.exprSum.tag === "unaryOp") {
+    return expr.exprSum.operatorName + ` (${exprToSql(expr)})`;
+  } else if (expr.exprSum.tag === "binaryOp") {
+    return (
+      exprToSql(expr.exprSum.left) +
+      " " +
+      expr.exprSum.operatorName +
+      " " +
+      exprToSql(expr.exprSum.right)
+    );
+  } else if (expr.exprSum.tag === "value") {
+    return expr.exprSum.val; // TODO we need escaping here probably?
   } else {
-    return checkAllCasesHandled(expr);
+    return checkAllCasesHandled(expr.exprSum);
   }
 }
 
@@ -463,7 +536,7 @@ export const BuiltinTypes = {
   },
 } as const;
 
-export function select<
+export function SELECT<
   AllTablesInDB extends { [tableName: string]: TableDef<any, any> }
 >(db: DB<AllTablesInDB>) {
   return new Select(db, {
@@ -515,13 +588,12 @@ function makeScopeObjFromTablesInScope<
     for (let columnName of object_keys(tableDef.fields)) {
       const col = tableDef.fields[columnName];
       const encoder = encoders[col.type];
-      tableOfExprs[columnName] = {
-        ...encoder,
+      tableOfExprs[columnName] = new Expr(encoder, {
         tag: "column",
         tableName: tableDef.name,
         tableSchema: tableDef.schema,
         field: col,
-      };
+      });
     }
     scope[tableName] = tableOfExprs as any;
   }

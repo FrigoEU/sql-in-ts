@@ -1,6 +1,6 @@
-import { demoDb } from "./demo";
-import { op, select, val } from "./query";
 import postgres from "postgres";
+import { demoDb } from "./demo";
+import { AND, NOT, SELECT, val } from "./query";
 
 const db = postgres({
   database: "sqlints",
@@ -9,13 +9,26 @@ const db = postgres({
 go();
 
 async function go() {
-  const q1 = select(demoDb)
-    .from("users")
-    .innerJoin("emails", (s) => op.eq(s.users.id, s.emails.user_id))
-    .leftJoin("addresses", (s) => op.eq(s.users.id, s.addresses.user_id))
-    .where((s) => op.not(op.eq(s.users.id, val(5))))
-    .project((s) => ({
-      user_id: s.users.id,
+  const q1 = SELECT(demoDb)
+    .FROM("users")
+    .JOIN("emails", (s) => s.users.id.EQ(s.emails.user_id))
+    .JOIN_LEFT("addresses", (s) => s.users.id.EQ(s.addresses.user_id))
+    .WHERE((s) =>
+      s.users.id
+        .EQ(val(1))
+        .AND(s.emails.id.EQ(val(5)))
+        .AND(NOT(s.emails.id.EQ(val(6))))
+    )
+    .WHERE((s) =>
+      AND(
+        s.users.id.EQ(val(1)),
+        s.emails.id.EQ(val(5)),
+        NOT(s.emails.id.EQ(val(6)))
+      )
+    )
+    .PROJECT((s) => ({
+      user_id: s.emails.user_id,
+      address: s.addresses.id,
       email_id: s.emails.id,
       verified: s.emails.verified,
     }));
