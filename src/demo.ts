@@ -5,7 +5,7 @@ export const demoDb: DB<DemoDb> = {
     users: {
       name: "users",
       schema: "public",
-      fields: { id: { name: "id", type: "int" } },
+      fields: { id: { name: "id", type: "int", nullable: false } },
       primaryKey: ["id"],
       defaults: [],
     },
@@ -13,9 +13,9 @@ export const demoDb: DB<DemoDb> = {
       name: "emails",
       schema: "public",
       fields: {
-        id: { name: "id", type: "int" },
-        user_id: { name: "user_id", type: "int" },
-        verified: { name: "verified", type: "boolean" },
+        id: { name: "id", type: "int", nullable: false },
+        user_id: { name: "user_id", type: "int", nullable: false },
+        verified: { name: "verified", type: "boolean", nullable: false },
       },
       primaryKey: ["id"],
       defaults: [],
@@ -24,8 +24,8 @@ export const demoDb: DB<DemoDb> = {
       name: "addresses",
       schema: "public",
       fields: {
-        id: { name: "id", type: "int" },
-        user_id: { name: "user_id", type: "int" },
+        id: { name: "id", type: "int", nullable: false },
+        user_id: { name: "user_id", type: "int", nullable: false },
       },
       primaryKey: ["id"],
       defaults: [],

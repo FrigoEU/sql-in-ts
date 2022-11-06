@@ -1,6 +1,15 @@
 import postgres from "postgres";
 import { demoDb } from "./demo";
-import { AND, NOT, SELECT, val } from "./query";
+import {
+  AND,
+  ARRAY_AGG,
+  EQ,
+  JSON_BUILD_OBJECT,
+  NOT,
+  PLUS,
+  SELECT,
+  val,
+} from "./query";
 
 const db = postgres({
   database: "sqlints",
@@ -9,34 +18,31 @@ const db = postgres({
 go();
 
 async function go() {
+  const qa = SELECT(demoDb);
+  const qb = qa.FROM("users");
+
   const q1 = SELECT(demoDb)
     .FROM("users")
-    .JOIN("emails", (s) => s.users.id.EQ(s.emails.user_id))
-    .JOIN_LEFT("addresses", (s) => s.users.id.EQ(s.addresses.user_id))
-    .WHERE((s) =>
-      s.users.id
-        .EQ(val(1))
-        .AND(s.emails.id.EQ(val(5)))
-        .AND(NOT(s.emails.id.EQ(val(6))))
-    )
-    .WHERE((s) =>
-      AND(
-        s.users.id.EQ(val(1)),
-        s.emails.id.EQ(val(5)),
-        NOT(s.emails.id.EQ(val(6)))
-      )
-    )
+    .JOIN("emails", (s) => EQ(s.users.id, s.emails.user_id))
+    .JOIN_LEFT("addresses", (s) => EQ(s.users.id, s.addresses.user_id))
+    .WHERE((s) => EQ(s.users.id, val(1)))
+    .GROUP_BY((s) => s.users.id)
     .PROJECT((s) => ({
-      user_id: s.emails.user_id,
-      address: s.addresses.id,
-      email_id: s.emails.id,
-      verified: s.emails.verified,
+      user_id: s.users.id,
+      emails: ARRAY_AGG(
+        JSON_BUILD_OBJECT({
+          id: s.emails.id,
+          verified: s.emails.verified,
+        })
+      ),
     }));
 
   const res = await q1.run(db);
   console.log();
   console.log("Query res:");
-  console.log(res);
+  console.log(JSON.stringify(res));
+
+  console.log(res[0].emails[0].verified);
 
   process.exit(0);
 }
