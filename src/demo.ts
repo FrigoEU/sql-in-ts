@@ -41,32 +41,16 @@ type DemoDb = {
 };
 
 type usersTable = {
-  name: "users";
-  schema: "public";
-  fields: { id: Field<number> };
-  primaryKey: ["id"];
-  defaults: [];
+  id: number;
 };
 
 type emailsTable = {
-  name: "emails";
-  schema: "public";
-  fields: {
-    id: Field<number>;
-    user_id: Field<number>;
-    verified: Field<boolean>;
-  };
-  primaryKey: ["id"];
-  defaults: [];
+  id: number;
+  user_id: number;
+  verified: boolean;
 };
 
 type addressesTable = {
-  name: "addresses";
-  schema: "public";
-  fields: {
-    id: Field<number>;
-    user_id: Field<number>;
-  };
-  primaryKey: ["id"];
-  defaults: [];
+  id: number;
+  user_id: number;
 };

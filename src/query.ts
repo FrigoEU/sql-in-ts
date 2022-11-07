@@ -1,4 +1,4 @@
-import { isArray, isBoolean, isNumber, isString } from "lodash";
+import { isBoolean, isNumber, isString } from "lodash";
 import postgres from "postgres";
 import { arrayParser } from "./arrayparser";
 
@@ -42,9 +42,11 @@ export const op = {
   PLUS,
 };
 
-export function JSON_BUILD_OBJECT<Obj extends { [key: string]: any }>(o: {
-  [K in keyof Obj]: Expr<Obj[K]>;
-}): Expr<Obj> {
+export function JSON_BUILD_OBJECT<Obj extends { [key: string]: any }>(
+  o: {
+    [K in keyof Obj]: Expr<Obj[K]>;
+  }
+): Expr<Obj> {
   const keys: (keyof Obj)[] = object_keys(o);
 
   const keysAndValues = keys
@@ -122,60 +124,90 @@ type Encoder<A> = {
 
 export class Select<
   AllTablesInDB extends {
-    [tableName: string]: TableDef<string, { [fieldname: string]: Field<any> }>;
+    [tableName: string]: { [fieldname: string]: any };
   },
   TablesInScope extends {
-    [tableName: string]: TableDef<string, { [fieldname: string]: Field<any> }>;
+    [tableName: string]: { [fieldname: string]: any };
   },
   Returns extends { [returnname: string]: any }
 > {
   private db: DB<AllTablesInDB>;
   private contents: {
-    tablesInScope: TablesInScope;
+    tablesInScope: {
+      [tableName in keyof TablesInScope]: {
+        [colName in keyof TablesInScope[tableName]]: Expr<
+          TablesInScope[tableName][colName]
+        >;
+      };
+    };
     from?: string;
     where: Expr<boolean>[];
     joins: {
-      table: TableDef<string, { [fieldname: string]: Field<any> }>;
+      table:
+        | { tag: "table"; table: TableDef<any, any> }
+        | { tag: "select"; select: Select<AllTablesInDB, any, any> };
       type: "INNER" | "LEFT" | "RIGHT";
       on: Expr<boolean>;
+      as: string;
     }[];
     groupBy: null | Expr<any>[];
-    returns: { [k in keyof Returns]: Expr<Returns[k]> };
+    returns: { [colName in keyof Returns]: Expr<Returns[colName]> };
   };
 
   public constructor(
     db: DB<AllTablesInDB>,
     contents: {
-      tablesInScope: TablesInScope;
+      tablesInScope: {
+        [tableName in keyof TablesInScope]: {
+          [colName in keyof TablesInScope[tableName]]: Expr<
+            TablesInScope[tableName][colName]
+          >;
+        };
+      };
       from?: string;
       where: Expr<boolean>[];
       joins: {
-        table: TableDef<string, { [fieldname: string]: Field<any> }>;
+        table:
+          | { tag: "table"; table: TableDef<any, any> }
+          | { tag: "select"; select: Select<AllTablesInDB, any, any> };
         type: "INNER" | "LEFT" | "RIGHT";
         on: Expr<boolean>;
+        as: string;
       }[];
       groupBy: null | Expr<any>[];
-      returns: { [k in keyof Returns]: Expr<Returns[k]> };
+      returns: { [colName in keyof Returns]: Expr<Returns[colName]> };
     }
   ) {
     this.db = db;
     this.contents = contents || ({} as TablesInScope);
   }
 
-  FROM<FromTableName extends keyof AllTablesInDB>(
-    t: FromTableName
-  ): Select<
-    AllTablesInDB,
-    TablesInScope & { [k in FromTableName]: AllTablesInDB[FromTableName] },
-    Returns
-  > {
+  FROM<
+    FromTableName extends keyof AllTablesInDB,
+    FromTable extends AllTablesInDB[FromTableName],
+    NewTablesInScope extends TablesInScope & { [k in FromTableName]: FromTable }
+  >(t: FromTableName): Select<AllTablesInDB, NewTablesInScope, Returns> {
     const table = this.db.tables[t];
-    const newTableInScope = { [t]: this.db.tables[t] } as {
-      [k in FromTableName]: AllTablesInDB[FromTableName];
+    const newTableInScope = {
+      [t]: makeExpressionsFromTableDef(table, table.name),
+    } as {
+      [k in FromTableName]: {
+        [colName in keyof FromTable]: FromTable[colName];
+      };
+    };
+    const newTablesInScope = {
+      ...this.contents.tablesInScope,
+      ...newTableInScope,
+    } as {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
     };
     return new Select(this.db, {
       ...this.contents,
-      tablesInScope: { ...this.contents.tablesInScope, ...newTableInScope },
+      tablesInScope: newTablesInScope,
       from: table.schema + "." + table.name,
     });
   }
@@ -183,95 +215,246 @@ export class Select<
   JOIN<
     FromTableName extends keyof AllTablesInDB,
     FromTable extends AllTablesInDB[FromTableName],
-    NewTablesInScope extends TablesInScope & {
-      [k in FromTableName]: FromTable;
-    }
+    NewTablesInScope extends TablesInScope &
+      {
+        [k in FromTableName]: FromTable;
+      }
   >(
     t: FromTableName,
-    makeExpr: (scope: {
-      [t in keyof NewTablesInScope]: {
-        [f in keyof NewTablesInScope[t]["fields"]]: Expr<
-          GetTypeFromField<NewTablesInScope[t]["fields"][f]>
-        >;
-      };
-    }) => Expr<boolean>
+    makeExpr: (
+      scope: {
+        [tableName in keyof NewTablesInScope]: {
+          [colName in keyof NewTablesInScope[tableName]]: Expr<
+            NewTablesInScope[tableName][colName]
+          >;
+        };
+      }
+    ) => Expr<boolean>
   ): Select<AllTablesInDB, NewTablesInScope, Returns> {
-    const table = this.db.tables[t] as FromTable;
-    const newTableInScope = { [t]: this.db.tables[t] } as {
-      [k in FromTableName]: FromTable;
+    const table = this.db.tables[t] as MakeTableDefFromRecord<FromTable>;
+    const tableAsExpr = makeExpressionsFromTableDef(table, table.name);
+    const newTableInScope = { [t]: tableAsExpr } as {
+      [k in FromTableName]: { [col in keyof FromTable]: Expr<FromTable[col]> };
     };
     const newTablesInScope = {
       ...this.contents.tablesInScope,
       ...newTableInScope,
-    } as NewTablesInScope;
-    const expr = makeExpr(makeScopeObjFromTablesInScope(newTablesInScope));
+    } as {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
+    };
+    const expr = makeExpr(newTablesInScope);
     return new Select(this.db, {
       ...this.contents,
       tablesInScope: newTablesInScope,
-      joins: this.contents.joins.concat({ table, type: "INNER", on: expr }),
+      joins: this.contents.joins.concat({
+        table: { tag: "table", table },
+        type: "INNER",
+        on: expr,
+        as: table.name,
+      }),
+    });
+  }
+
+  JOIN_SUBSELECT<
+    AS extends string,
+    SubSelectReturns extends { [returnname: string]: any },
+    NewTablesInScope extends TablesInScope & { [k in AS]: SubSelectReturns }
+  >(
+    t: AS,
+    select: Select<AllTablesInDB, any, SubSelectReturns>,
+    makeExpr: (
+      scope: {
+        [tableName in keyof NewTablesInScope]: {
+          [colName in keyof NewTablesInScope[tableName]]: Expr<
+            NewTablesInScope[tableName][colName]
+          >;
+        };
+      }
+    ) => Expr<boolean>
+  ): Select<AllTablesInDB, NewTablesInScope, Returns> {
+    const newTableInScope = {} as {
+      [colName in keyof SubSelectReturns]: Expr<SubSelectReturns[colName]>;
+    };
+    for (let colName of object_keys(select.contents.returns)) {
+      const origExpr = select.contents.returns[colName];
+      newTableInScope[colName] = new Expr(
+        origExpr.encoder,
+        `${t}.${String(colName)}`
+      );
+    }
+    const newTableInScopeRec = { [t]: newTableInScope } as {
+      [k in AS]: typeof newTableInScope;
+    };
+    const newTablesInScope = {
+      ...this.contents.tablesInScope,
+      ...newTableInScopeRec,
+    } as {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
+    };
+    const expr = makeExpr(newTablesInScope);
+    return new Select(this.db, {
+      ...this.contents,
+      tablesInScope: newTablesInScope,
+      joins: this.contents.joins.concat({
+        table: { tag: "select", select: select },
+        type: "INNER",
+        on: expr,
+        as: t,
+      }),
+    });
+  }
+
+  JOIN_LATERAL<
+    AS extends string,
+    SubSelectReturns extends { [returnname: string]: any },
+    NewTablesInScope extends TablesInScope & { [k in AS]: SubSelectReturns }
+  >(
+    t: AS,
+    select: (
+      scope: {
+        [tableName in keyof TablesInScope]: {
+          [colName in keyof TablesInScope[tableName]]: Expr<
+            TablesInScope[tableName][colName]
+          >;
+        };
+      }
+    ) => Select<AllTablesInDB, any, SubSelectReturns>,
+    makeExpr: (
+      scope: {
+        [tableName in keyof NewTablesInScope]: {
+          [colName in keyof NewTablesInScope[tableName]]: Expr<
+            NewTablesInScope[tableName][colName]
+          >;
+        };
+      }
+    ) => Expr<boolean>
+  ): Select<AllTablesInDB, NewTablesInScope, Returns> {
+    const nestedSelect = select(this.contents.tablesInScope);
+    const newTableInScope = {} as {
+      [colName in keyof SubSelectReturns]: Expr<SubSelectReturns[colName]>;
+    };
+    for (let colName of object_keys(nestedSelect.contents.returns)) {
+      const origExpr = nestedSelect.contents.returns[colName];
+      newTableInScope[colName] = new Expr(
+        origExpr.encoder,
+        `${t}.${String(colName)}`
+      );
+    }
+    const newTableInScopeRec = { [t]: newTableInScope } as {
+      [k in AS]: typeof newTableInScope;
+    };
+    const newTablesInScope = {
+      ...this.contents.tablesInScope,
+      ...newTableInScopeRec,
+    } as {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
+    };
+    const expr = makeExpr(newTablesInScope);
+    return new Select(this.db, {
+      ...this.contents,
+      tablesInScope: newTablesInScope,
+      joins: this.contents.joins.concat({
+        table: { tag: "select", select: nestedSelect },
+        type: "INNER",
+        on: expr,
+        as: t,
+      }),
     });
   }
 
   JOIN_LEFT<
     JoiningTableName extends keyof AllTablesInDB,
     JoiningTable extends AllTablesInDB[JoiningTableName],
-    NewTablesInScope extends TablesInScope & {
-      [k in JoiningTableName]: JoiningTable;
+    NewTablesInScope extends TablesInScope &
+      {
+        [k in JoiningTableName]: JoiningTable;
+      },
+    NewTablesInScopeAsExprs extends {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
     },
-    NewTablesInScopeNullable extends TablesInScope & {
-      [k in JoiningTableName]: MakeTableDefNullable<JoiningTable>;
+    NewTablesInScopeNullable extends TablesInScope &
+      {
+        [k in JoiningTableName]: MakeRecordNullable<JoiningTable>;
+      },
+    NewTablesInScopeNullableAsExprs extends {
+      [tableName in keyof NewTablesInScopeNullable]: {
+        [colName in keyof NewTablesInScopeNullable[tableName]]: Expr<
+          NewTablesInScopeNullable[tableName][colName]
+        >;
+      };
     }
   >(
     t: JoiningTableName,
-    makeExpr: (scope: {
-      [t in keyof NewTablesInScope]: {
-        [f in keyof NewTablesInScope[t]["fields"]]: Expr<
-          GetTypeFromField<NewTablesInScope[t]["fields"][f]>
-        >;
-      };
-    }) => Expr<boolean>
+    makeExpr: (scope: NewTablesInScopeAsExprs) => Expr<boolean>
   ): Select<AllTablesInDB, NewTablesInScopeNullable, Returns> {
-    const table = this.db.tables[t] as JoiningTable;
-    const newTableInScope = { [t]: this.db.tables[t] } as unknown as {
-      [k in JoiningTableName]: JoiningTable;
+    const table = this.db.tables[t] as MakeTableDefFromRecord<JoiningTable>;
+    const tableAsExpr = makeExpressionsFromTableDef(table, table.name) as {
+      [colName in keyof JoiningTable]: Expr<JoiningTable[colName]>;
+    };
+    const newTableInScope = {
+      [t]: tableAsExpr,
+    } as {
+      [k in JoiningTableName]: typeof tableAsExpr;
     };
     const newTableInScopeNullable = {
-      [t]: nullifyTable(table), // TODO make expressions nullable (= Change encoder?)
-    } as unknown as {
-      [k in JoiningTableName]: MakeTableDefNullable<JoiningTable>;
+      [t]: nullifyRecord(tableAsExpr),
+    } as {
+      [k in JoiningTableName]: {
+        [colName in keyof JoiningTable]: Expr<JoiningTable | null>;
+      };
     };
     const newTablesInScope = {
       ...this.contents.tablesInScope,
       ...newTableInScope,
-    } as NewTablesInScope;
+    } as NewTablesInScopeAsExprs;
     const newTablesInScopeNullable = {
       ...this.contents.tablesInScope,
       ...newTableInScopeNullable,
-    } as NewTablesInScopeNullable;
-    const expr = makeExpr(makeScopeObjFromTablesInScope(newTablesInScope));
-    return new Select(this.db, {
-      ...this.contents,
-      tablesInScope: newTablesInScopeNullable,
-      joins: this.contents.joins.concat({
-        table: nullifyTable(table),
-        type: "LEFT",
-        on: expr,
-      }),
-    });
+    } as NewTablesInScopeNullableAsExprs;
+    const expr = makeExpr(newTablesInScope);
+    return new Select<AllTablesInDB, NewTablesInScopeNullable, Returns>(
+      this.db,
+      {
+        ...this.contents,
+        tablesInScope: newTablesInScopeNullable,
+        joins: this.contents.joins.concat({
+          table: { tag: "table", table: table },
+          type: "LEFT",
+          on: expr,
+          as: t as string,
+        }),
+      }
+    );
   }
 
   WHERE(
-    cb: (scope: {
-      [t in keyof TablesInScope]: {
-        [f in keyof TablesInScope[t]["fields"]]: Expr<
-          GetTypeFromField<TablesInScope[t]["fields"][f]>
-        >;
-      };
-    }) => Expr<boolean>
-  ) {
-    const scope = makeScopeObjFromTablesInScope(this.contents.tablesInScope);
-
-    const expr = cb(scope);
+    cb: (
+      scope: {
+        [t in keyof TablesInScope]: {
+          [f in keyof TablesInScope[t]]: Expr<
+            GetTypeFromField<TablesInScope[t][f]>
+          >;
+        };
+      }
+    ) => Expr<boolean>
+  ): Select<AllTablesInDB, TablesInScope, Returns> {
+    const expr = cb(this.contents.tablesInScope);
     return new Select(this.db, {
       ...this.contents,
       where: this.contents.where.concat(expr),
@@ -279,15 +462,17 @@ export class Select<
   }
 
   GROUP_BY(
-    cb: (scope: {
-      [t in keyof TablesInScope]: {
-        [f in keyof TablesInScope[t]["fields"]]: Expr<
-          GetTypeFromField<TablesInScope[t]["fields"][f]>
-        >;
-      };
-    }) => Expr<any> | Expr<any>[]
-  ) {
-    const scope = makeScopeObjFromTablesInScope(this.contents.tablesInScope);
+    cb: (
+      scope: {
+        [t in keyof TablesInScope]: {
+          [f in keyof TablesInScope[t]]: Expr<
+            GetTypeFromField<TablesInScope[t][f]>
+          >;
+        };
+      }
+    ) => Expr<any> | Expr<any>[]
+  ): Select<AllTablesInDB, TablesInScope, Returns> {
+    const scope = this.contents.tablesInScope;
 
     const expr = cb(scope);
 
@@ -298,15 +483,19 @@ export class Select<
   }
 
   PROJECT<NewReturns extends { [columnname: string]: any }>(
-    cb: (scope: {
-      [t in keyof TablesInScope]: {
-        [f in keyof TablesInScope[t]["fields"]]: Expr<
-          GetTypeFromField<TablesInScope[t]["fields"][f]>
-        >;
-      };
-    }) => { [k in keyof NewReturns]: Expr<NewReturns[k]> }
-  ) {
-    const scope = makeScopeObjFromTablesInScope(this.contents.tablesInScope);
+    cb: (
+      scope: {
+        [tableName in keyof TablesInScope]: {
+          [colName in keyof TablesInScope[tableName]]: Expr<
+            TablesInScope[tableName][colName]
+          >;
+        };
+      }
+    ) => {
+      [colName in keyof NewReturns]: Expr<NewReturns[colName]>;
+    }
+  ): Select<AllTablesInDB, TablesInScope, NewReturns> {
+    const scope = this.contents.tablesInScope;
 
     const exprs = cb(scope);
 
@@ -318,6 +507,7 @@ export class Select<
 
   toSql(): string {
     return [
+      "(",
       "SELECT " +
         object_keys(this.contents.returns)
           .map(
@@ -329,9 +519,11 @@ export class Select<
         (j) =>
           j.type +
           " JOIN " +
-          j.table.schema +
-          "." +
-          j.table.name +
+          (j.table.tag === "table"
+            ? j.table.table.schema + "." + j.table.table.name
+            : j.table.select.toSql()) +
+          " AS " +
+          j.as +
           " ON " +
           j.on.asSql
       ),
@@ -340,7 +532,10 @@ export class Select<
       this.contents.groupBy === null
         ? ""
         : "GROUP BY " + this.contents.groupBy.map((e) => e.asSql).join(", "),
-    ].join("\n");
+      ")",
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
   }
 
   async run(pg: postgres.Sql<any>): Promise<Returns[]> {
@@ -363,7 +558,7 @@ export class Select<
         const name = names[i];
         const returnsExpr = self.contents.returns[name];
         const col = cols[i];
-        returnRow[name] = returnsExpr.encoder.deserialize(
+        returnRow[name as keyof Returns] = returnsExpr.encoder.deserialize(
           col?.toString("utf8") || null
         );
       }
@@ -391,23 +586,27 @@ export type TableDef<
   readonly defaults: (keyof Fields)[];
 };
 
-function nullifyTable<
-  Name extends string,
-  Fields extends { [fieldname: string]: Field<any> }
->(
-  t: TableDef<Name, { [K in keyof Fields]: Field<Fields[K]> }>
-): TableDef<Name, { [K in keyof Fields]: Field<null | Fields[K]> }> {
+type MakeTableDefFromRecord<Record> = Record extends { [col: string]: any }
+  ? TableDef<any, { [col in keyof Record]: Field<Record[col]> }>
+  : never;
+
+function nullifyRecord<Fields extends { [fieldname: string]: any }>(
+  t: { [K in keyof Fields]: Expr<Fields[K]> }
+): { [K in keyof Fields]: Expr<null | Fields[K]> } {
   const nullifiedFields = {} as {
-    [K in keyof Fields]: Field<null | Fields[K]>;
+    [K in keyof Fields]: Expr<null | Fields[K]>;
   };
-  const keys = object_keys(t.fields);
+  const keys = object_keys(t);
   for (let key of keys) {
-    const field = t.fields[key];
-    nullifiedFields[key] = {
-      name: field.name,
-      type: field.type,
-      nullable: true,
-    };
+    const field = t[key];
+    nullifiedFields[key] = new Expr(
+      {
+        deserialize: (n: null | any) => {
+          return n === null ? null : field.encoder.deserialize(n);
+        },
+      },
+      field.asSql
+    );
   }
   return {
     ...t,
@@ -415,18 +614,20 @@ function nullifyTable<
   };
 }
 
-type MakeTableDefNullable<A> = A extends TableDef<infer Name, infer Fields>
-  ? TableDef<Name, { [f in keyof Fields]: MakeFieldNullable<Fields[f]> }>
+type MakeRecordNullable<A> = A extends { [k: string]: any }
+  ? { [f in keyof A]: A[f] | null }
   : never;
-
-type MakeFieldNullable<A> = A extends Field<infer T> ? Field<T | null> : never;
 
 export type DB<
   AllTablesInDB extends {
-    [tableName: string]: TableDef<string, { [fieldname: string]: Field<any> }>;
+    [tableName: string]: { [fieldname: string]: any };
   }
 > = {
-  readonly tables: AllTablesInDB;
+  readonly tables: {
+    [tableName in keyof AllTablesInDB]: MakeTableDefFromRecord<
+      AllTablesInDB[tableName]
+    >;
+  };
   readonly views: ReadonlyArray<{
     readonly name: string;
     readonly schema: string;
@@ -554,13 +755,13 @@ export const BuiltinTypes = {
 } as const;
 
 export function SELECT<
-  AllTablesInDB extends { [tableName: string]: TableDef<any, any> }
+  AllTablesInDB extends { [tableName: string]: { [colName: string]: any } }
 >(db: DB<AllTablesInDB>) {
-  return new Select(db, {
+  return new Select<AllTablesInDB, {}, {}>(db, {
     tablesInScope: {},
     where: [],
     joins: [],
-    returns: [],
+    returns: {},
     groupBy: null,
   });
 }
@@ -575,51 +776,32 @@ export function checkAllCasesHandled(a: never): never {
   );
 }
 
-function makeScopeObjFromTablesInScope<
-  TablesInScope extends {
-    [tableName: string]: TableDef<string, { [fieldname: string]: Field<any> }>;
-  }
+function makeExpressionsFromTableDef<
+  TableInScope extends { [fieldname: string]: any }
 >(
-  tablesInScope: TablesInScope
-): {
-  [t in keyof TablesInScope]: {
-    [f in keyof TablesInScope[t]["fields"]]: Expr<
-      GetTypeFromField<TablesInScope[t]["fields"][f]>
+  tableDef: TableDef<
+    any,
+    { [k in keyof TableInScope]: Field<TableInScope[k]> }
+  >,
+  as: string
+): { [k in keyof TableInScope]: Expr<TableInScope[k]> } {
+  const tableOfExprs = {} as {
+    [f in keyof typeof tableDef["fields"]]: Expr<
+      GetTypeFromField<typeof tableDef["fields"][f]>
     >;
   };
-} {
-  const scope = {} as {
-    [t in keyof TablesInScope]: {
-      [f in keyof TablesInScope[t]["fields"]]: Expr<
-        GetTypeFromField<TablesInScope[t]["fields"][f]>
-      >;
-    };
-  };
-  for (let tableName of object_keys(tablesInScope)) {
-    const tableDef: TableDef<string, { [fieldname: string]: Field<any> }> =
-      tablesInScope[tableName];
-    const tableOfExprs = {} as {
-      [f in keyof typeof tableDef["fields"]]: Expr<
-        GetTypeFromField<typeof tableDef["fields"][f]>
-      >;
-    };
-    for (let columnName of object_keys(tableDef.fields)) {
-      const col = tableDef.fields[columnName];
-      const encoderT = encoders[col.type === "int" ? "number" : col.type];
-      const encoder =
-        col.nullable === true
-          ? {
-              deserialize: (n: null | any) => {
-                return n === null ? null : encoderT.deserialize(n);
-              },
-            }
-          : encoderT;
-      tableOfExprs[columnName] = new Expr(
-        encoder as any,
-        `${tableDef.schema}.${tableDef.name}.${col.name}`
-      );
-    }
-    scope[tableName] = tableOfExprs as any;
+  for (let columnName of object_keys(tableDef.fields)) {
+    const col = tableDef.fields[columnName];
+    const encoderT = encoders[col.type === "int" ? "number" : col.type];
+    const encoder =
+      col.nullable === true
+        ? {
+            deserialize: (n: null | any) => {
+              return n === null ? null : encoderT.deserialize(n);
+            },
+          }
+        : encoderT;
+    tableOfExprs[columnName] = new Expr(encoder as any, `${as}.${col.name}`);
   }
-  return scope;
+  return tableOfExprs;
 }
