@@ -47,6 +47,14 @@ async function go() {
       emails: s.nested_emails.emails,
     }));
 
+  // const q2 = SELECT(demoDb)
+  //   .FROM("users")
+  //   .JOIN_NESTED(
+  //     "emails",
+  //     (s) => s.users.id,
+  //     (em) => em.emails.user_id
+  //   );
+
   const res = await q1.run(db);
   console.log();
   console.log("Query res:");

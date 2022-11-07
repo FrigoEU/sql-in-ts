@@ -26,6 +26,16 @@ const encoders: {
 
 type pgtype = keyof typeof encoders;
 
+type ScalarT =
+  | null
+  | number
+  | string
+  | boolean
+  | Array<ScalarT>
+  | { [key: string]: ScalarT } /* JSON */;
+
+// type RelationT<> = /* To encapsulate a subselect ? */
+
 export function NOT(val: Expr<boolean>): Expr<boolean> {
   return new Expr(encoders.boolean, `NOT (${val.asSql})`);
 }
@@ -482,7 +492,7 @@ export class Select<
     });
   }
 
-  PROJECT<NewReturns extends { [columnname: string]: any }>(
+  PROJECT<NewReturns extends { [columnname: string]: ScalarT }>(
     cb: (
       scope: {
         [tableName in keyof TablesInScope]: {
@@ -656,10 +666,10 @@ export type JsonKnownT = {
   kind: "jsonknown";
   record: RecordT;
 };
-export type ScalarT = {
-  kind: "scalar";
-  name: string;
-};
+// export type ScalarT = {
+//   kind: "scalar";
+//   name: string;
+// };
 export type VoidT = {
   // represents nothing, so zero rows, like when doing an INSERT without RETURNING
   kind: "void";
