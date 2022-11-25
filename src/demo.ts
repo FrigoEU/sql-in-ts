@@ -1,38 +1,52 @@
-import type { DB, Field } from "./query";
+import { DB, FieldDef, TableDef } from "./query";
 
-export const demoDb: DB<DemoDb> = {
+export const demoDb = new DB<DemoDb>({
   tables: {
     users: {
-      name: "users",
-      schema: "public",
-      fields: { id: { name: "id", type: "int", nullable: false } },
-      primaryKey: ["id"],
-      defaults: [],
-    },
+      __meta: {
+        name: "users",
+        schema: "public",
+      },
+      fields: {
+        id: { name: "id", type: "int", nullable: false },
+      },
+    } as TableDef<
+      "users",
+      {
+        id: FieldDef<number>;
+      }
+    >,
     emails: {
-      name: "emails",
-      schema: "public",
+      __meta: {
+        name: "emails",
+        schema: "public",
+      },
       fields: {
         id: { name: "id", type: "int", nullable: false },
         user_id: { name: "user_id", type: "int", nullable: false },
         verified: { name: "verified", type: "boolean", nullable: false },
       },
-      primaryKey: ["id"],
-      defaults: [],
-    },
+    } as TableDef<
+      "emails",
+      {
+        id: FieldDef<number>;
+        user_id: FieldDef<number>;
+        verified: FieldDef<boolean>;
+      }
+    >,
     addresses: {
-      name: "addresses",
-      schema: "public",
+      __meta: {
+        name: "addresses",
+        schema: "public",
+      },
       fields: {
         id: { name: "id", type: "int", nullable: false },
         user_id: { name: "user_id", type: "int", nullable: false },
       },
-      primaryKey: ["id"],
-      defaults: [],
     },
   },
   views: [],
-};
+} as const);
 
 type DemoDb = {
   users: usersTable;
