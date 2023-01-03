@@ -180,11 +180,110 @@ export class InitialSelect<
 }
 
 export class BeforeProject<
-  OuterScope extends Record<RelationName, Record<FieldName, any>>,
+  OuterScope extends Record<string, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>
 > extends BuildingUpQuery<OuterScope, InScope> {
-  JOIN() {
-    // TODO
+  public JOIN<FromRelName extends keyof OuterScope & string>(
+    cb: (
+      db: {
+        [tableName in keyof OuterScope & string]: tableName;
+      } & { SELECT: () => InitialSelect<OuterScope, {}> }
+    ) => FromRelName
+  ): Joining<OuterScope, InScope, FromRelName, OuterScope[FromRelName]> & {
+    AS: <AsRelName extends string>(
+      as: AsRelName
+    ) => Joining<OuterScope, InScope, AsRelName, OuterScope[FromRelName]>;
+  };
+  public JOIN<
+    FromRelName extends keyof OuterScope,
+    JoiningRel extends Record<FieldName, any>
+  >(
+    cb: (
+      db: {
+        [tableName in keyof OuterScope & string]: tableName;
+      } & { SELECT: () => InitialSelect<OuterScope, {}> }
+    ) => Select<any, any, JoiningRel>
+  ): {
+    AS: <AsRelName extends string>(
+      as: AsRelName
+    ) => Joining<OuterScope, InScope, AsRelName, JoiningRel>;
+  };
+  public JOIN<
+    FromRelName extends keyof OuterScope & string,
+    JoiningRel extends Record<FieldName, any>
+  >(
+    cb: (
+      db: {
+        [tableName in keyof OuterScope & string]: tableName;
+      } & { SELECT: () => InitialSelect<OuterScope, {}> }
+    ) => FromRelName | Select<OuterScope, any, JoiningRel>
+  ):
+    | (Joining<OuterScope, InScope, FromRelName, JoiningRel> & {
+        AS: <AsRelName extends string>(
+          as: AsRelName
+        ) => Joining<OuterScope, InScope, AsRelName, JoiningRel>;
+      })
+    | {
+        AS: <AsRelName extends string>(
+          as: AsRelName
+        ) => Joining<OuterScope, InScope, AsRelName, JoiningRel>;
+      } {
+    const tableOrSelect = cb({
+      SELECT: () => this.outerScope.SELECT(),
+      // Making outer scope object
+      ...(() => {
+        const relNames = {} as {
+          [tableName in keyof OuterScope & string]: tableName;
+        };
+        for (let k of object_keys(
+          isDb(this.outerScope) ? this.outerScope.tables : this.outerScope.data
+        )) {
+          const asRelationName = k as RelationName;
+          relNames[k] = asRelationName;
+        }
+        return relNames;
+      })(),
+    });
+    const self = this;
+    if (isString(tableOrSelect)) {
+      // User provided a relation as the target of the join
+      const joining = new Joining(
+        this.outerScope,
+        self.contents,
+        tableOrSelect,
+        tableOrSelect as unknown as RelationName
+      ) as Joining<OuterScope, InScope, FromRelName, JoiningRel> & {
+        AS: <AsRelName extends string>(
+          asStr: AsRelName
+        ) => Joining<OuterScope, InScope, AsRelName, JoiningRel>;
+      };
+      joining.AS = function <AsRelName extends string>(
+        asStr: AsRelName
+      ): Joining<OuterScope, InScope, AsRelName, JoiningRel> {
+        const res = new Joining(
+          self.outerScope,
+          self.contents,
+          asStr,
+          tableOrSelect as unknown as RelationName
+        ) as Joining<OuterScope, InScope, AsRelName, JoiningRel>;
+        return res;
+      };
+      return joining;
+    } else {
+      // User provided a select as the target of the join
+      return {
+        AS: function <AsRelName extends string>(
+          asStr: AsRelName
+        ): Joining<OuterScope, InScope, AsRelName, JoiningRel> {
+          return new Joining(
+            self.outerScope,
+            self.contents,
+            asStr,
+            tableOrSelect
+          );
+        },
+      };
+    }
   }
 
   PROJECT<NewReturns extends { [columnname: string]: any }>(
@@ -245,6 +344,107 @@ export class BeforeProject<
     const exprs = cb(scope);
 
     return new Select(this.outerScope, this.contents, exprs);
+  }
+}
+
+export class Joining<
+  OuterScope extends Record<RelationName, Record<FieldName, any>>,
+  InScope extends Record<RelationNameInQuery, Record<FieldName, any>>,
+  As extends string,
+  JoiningRelation extends Record<FieldName, any>
+> extends BuildingUpQuery<OuterScope, InScope> {
+  private asStr: string;
+  private joiningRelation: RelationName | Select<any, any, JoiningRelation>;
+
+  constructor(
+    db: DB<OuterScope> | InMem<OuterScope>,
+    contents: BuildingUpQueryContents<OuterScope, InScope>,
+    asStr: As,
+    joiningRelation: RelationName | Select<any, any, JoiningRelation>
+  ) {
+    super(db, contents);
+    this.asStr = asStr;
+    this.joiningRelation = joiningRelation;
+  }
+
+  ON<NewScope extends InScope & { [k in As]: JoiningRelation }>(
+    cb: (scope: {
+      [tableName in keyof NewScope]: {
+        [colName in keyof NewScope[tableName]]: Expr<
+          NewScope[tableName][colName]
+        >;
+      };
+    }) => Expr<boolean>
+  ): BeforeProject<OuterScope, NewScope> {
+    const scope = {} as {
+      [relName in keyof NewScope]: {
+        [colName in keyof NewScope[relName]]: Expr<NewScope[relName][colName]>;
+      };
+    };
+
+    const newInScope = {
+      ...this.contents.inScope,
+      [this.asStr]: this.joiningRelation,
+    };
+
+    for (let k of object_keys(newInScope)) {
+      const key = k as keyof NewScope;
+      const val: RelationName | Select<OuterScope, any, any> = newInScope[key];
+      if (isString(val)) {
+        const exprs = makeExpressionsForRelationFromOuterScope(
+          this.outerScope,
+          val,
+          k as string
+        );
+        // we need the forced cast here, because we have no typelevel proof that OuterScope[val] = InScope[key]
+        scope[key] = exprs as unknown as {
+          [colName in keyof NewScope[typeof key]]: Expr<
+            NewScope[typeof key][colName]
+          >;
+        };
+      } else {
+        type SelectReturns = GetReturnsFromSelect<typeof val>;
+        const exprs = {} as {
+          [colName in keyof SelectReturns]: Expr<SelectReturns[colName]>;
+        };
+        const returns = val.getReturns();
+        const outerKey = key;
+        let k: keyof typeof returns;
+        for (k of object_keys(returns)) {
+          if (!isString(k) || !isString(outerKey)) {
+            continue;
+          }
+          const val = returns[k];
+          exprs[k] = {
+            ...val,
+            asSql: `${outerKey}.${k}`,
+          };
+          scope[key] = exprs as any; // TS is completely lost here
+        }
+      }
+    }
+
+    const expr = cb(scope);
+
+    return new BeforeProject(this.outerScope, {
+      ...this.contents,
+      inScope: newInScope,
+      joins: this.contents.joins.concat({
+        rel: isString(this.joiningRelation)
+          ? {
+              tag: "relation",
+              relation: this.joiningRelation,
+              as: this.asStr !== this.joiningRelation ? this.asStr : undefined,
+            }
+          : {
+              tag: "select",
+              select: this.joiningRelation,
+              as: this.asStr,
+            },
+        type: "INNER",
+        on: expr,
+      }),
+    }) as BeforeProject<OuterScope, NewScope>;
   }
 }
 
@@ -361,9 +561,34 @@ export class Select<
       }
     })();
 
-    const rows = from_[1].map((fro) => ({
+    let rows = from_[1].map((fro) => ({
       [from_[0]]: fro,
     }));
+
+    for (let join of this.contents.joins) {
+      if (join.type === "INNER") {
+        let newRows = [];
+        for (let row of rows) {
+          for (let rel of join.rel.tag === "relation"
+            ? data[join.rel.relation]
+            : join.rel.select.runInMemory(data)) {
+            const newRow = {
+              ...row,
+              [join.rel.tag === "relation"
+                ? join.rel.as || join.rel.relation
+                : join.rel.as]: rel,
+            };
+            const pred = join.on.inMem(newRow);
+            if (pred) {
+              newRows.push(newRow);
+            }
+          }
+        }
+        rows = newRows;
+      } else {
+        throw new Error("Join type not implemented yet");
+      }
+    }
 
     // TODO joins, group, order
 
@@ -501,10 +726,10 @@ export class DB<
 export class InMem<
   AllTablesInDB extends { [tableName: string]: { [colName: string]: any } }
 > {
-  public readonly data: AllTablesInDB;
+  public readonly data: { [k in keyof AllTablesInDB]: AllTablesInDB[k][] };
 
-  constructor(inp: AllTablesInDB) {
-    this.data = inp;
+  constructor(d: { [k in keyof AllTablesInDB]: AllTablesInDB[k][] }) {
+    this.data = d;
   }
 
   public SELECT() {

@@ -8,21 +8,26 @@ const qx = demoDb.SELECT().FROM((db) => db.users);
 //   .FROM((db) => db.SELECT().FROM((db) => db.users))
 //   .AS("myusers");
 
-const qy = demoDb
+const qp = demoDb
   .SELECT()
   .FROM((db) => db.users)
   .AS("bla")
+  .JOIN((db) => db.emails);
+
+const qy = demoDb
+  .SELECT()
+  .FROM((db) => db.users)
+  .JOIN((db) => db.emails)
+  .ON((s) => EQ(s.users.id, s.emails.user_id))
   .PROJECT((s) => ({
-    something: s.bla.id,
+    userid: s.users.id,
+    emailid: s.emails.id,
+    emailverified: s.emails.verified,
   }));
 
 console.log(qy.toSql());
 
-const myRel: {
-  users: { id: number }[];
-  emails: { id: number; user_id: null | number; verified: boolean }[];
-  addresses: { id: number; user_id: number }[];
-} = {
+const myRel = {
   users: [
     {
       id: 1,
@@ -39,11 +44,27 @@ const myRel: {
       user_id: null,
       verified: false,
     },
+    {
+      id: 3,
+      user_id: 1,
+      verified: false,
+    },
   ],
   addresses: [{ id: 1, user_id: 1 }],
 };
 
 const inMemDb = new InMem(myRel);
+
+const qz = inMemDb
+  .SELECT()
+  .FROM((db) => db.users)
+  .JOIN((db) => db.emails)
+  .ON((s) => EQ(s.users.id, s.emails.user_id))
+  .PROJECT((s) => ({
+    userid: s.users.id,
+    emailid: s.emails.id,
+    emailverified: s.emails.verified,
+  }));
 
 const inMemRes = qy.runInMemory(myRel);
 
