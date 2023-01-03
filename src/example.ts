@@ -1,19 +1,6 @@
 import { demoDb } from "./demo2";
 import { EQ, InMem } from "./query2";
 
-const qx = demoDb.SELECT().FROM((db) => db.users);
-
-// const qz = demoDb
-//   .SELECT()
-//   .FROM((db) => db.SELECT().FROM((db) => db.users))
-//   .AS("myusers");
-
-const qp = demoDb
-  .SELECT()
-  .FROM((db) => db.users)
-  .AS("bla")
-  .JOIN((db) => db.emails);
-
 const qy = demoDb
   .SELECT()
   .FROM((db) => db.users)
@@ -28,27 +15,11 @@ const qy = demoDb
 console.log(qy.toSql());
 
 const myRel = {
-  users: [
-    {
-      id: 1,
-    },
-  ],
+  users: [{ id: 1 }],
   emails: [
-    {
-      id: 1,
-      user_id: 1,
-      verified: true,
-    },
-    {
-      id: 2,
-      user_id: null,
-      verified: false,
-    },
-    {
-      id: 3,
-      user_id: 1,
-      verified: false,
-    },
+    { id: 1, user_id: 1, verified: true },
+    { id: 2, user_id: null, verified: false },
+    { id: 3, user_id: 1, verified: false },
   ],
   addresses: [{ id: 1, user_id: 1 }],
 };
@@ -66,7 +37,7 @@ const qz = inMemDb
     emailverified: s.emails.verified,
   }));
 
-const inMemRes = qy.runInMemory(myRel);
+const inMemRes = qz.runInMemory(myRel);
 
 console.log(JSON.stringify(inMemRes, null, 2));
 
