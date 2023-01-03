@@ -1,4 +1,4 @@
-import { DB, FieldDef, TableDef } from "./query";
+import { DB, FieldDef, TableDef } from "./query2";
 
 export const demoDb = new DB<DemoDb>({
   tables: {
@@ -45,7 +45,6 @@ export const demoDb = new DB<DemoDb>({
       },
     },
   },
-  views: [],
 } as const);
 
 export type DemoDb = {

@@ -1,12 +1,12 @@
 const esbuild = require("esbuild");
 
 const buildOptions = {
-  entryPoints: ["src/index.ts"],
+  entryPoints: ["src/index.ts", "src/example.ts"],
   // entryPoints: ["src/index_kysely.ts"],
   bundle: true,
   sourcemap: true,
   platform: "node",
-  outfile: "out/index.js",
+  outdir: "out",
   // banner: '#!/usr/bin/env node' ,
   external: ["pg-native"],
 };

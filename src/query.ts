@@ -2,7 +2,7 @@ import { isBoolean, isNumber, isString, isSymbol } from "lodash";
 import postgres from "postgres";
 import { arrayParser } from "./arrayparser";
 
-const encoders: {
+export const encoders: {
   boolean: Encoder<boolean>;
   number: Encoder<number>;
   string: Encoder<string>;
