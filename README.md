@@ -15,3 +15,5 @@ SELECT user_id, json_build_object('bl', emails.id) FROM ... GROUP BY user_id
 SELECT user_id, ARRAY_AGG(json_build_object('bl', emails.id)) FROM ... GROUP BY user_id
 -> works : NOTE: is that because json_build_object is not an aggregate function?
 => Might be possible, once we groupby we can only use a/ grouped on expressions, b/ aggregate functions
+
+SQL Optimization: https://github.com/tobymao/sqlglot/blob/main/posts/python_sql_engine.md#optimizing

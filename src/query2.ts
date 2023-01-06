@@ -7,7 +7,7 @@ type RelationNameInQuery = string & Tag<"RelationNameInQuery">;
 type RelationName = string & Tag<"RelationName">;
 type FieldName = string & Tag<"FieldName">;
 
-type BuildingUpQueryContents<
+type BuildingUpSelectContents<
   OuterScope extends Record<RelationName, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>
 > = {
@@ -33,16 +33,16 @@ type BuildingUpQueryContents<
   groupBy: null | Expr<any>[];
 };
 
-export class BuildingUpQuery<
+export class BuildingUpSelect<
   OuterScope extends Record<RelationName, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>
 > {
   protected outerScope: DB<OuterScope> | InMem<OuterScope>;
-  protected contents: BuildingUpQueryContents<OuterScope, InScope>;
+  protected contents: BuildingUpSelectContents<OuterScope, InScope>;
 
   public constructor(
     db: DB<OuterScope> | InMem<OuterScope>,
-    contents: BuildingUpQueryContents<OuterScope, InScope>
+    contents: BuildingUpSelectContents<OuterScope, InScope>
   ) {
     this.outerScope = db;
     this.contents = contents || ({} as InScope);
@@ -52,7 +52,7 @@ export class BuildingUpQuery<
 export class InitialSelect<
   OuterScope extends Record<RelationName, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>
-> extends BuildingUpQuery<OuterScope, InScope> {
+> extends BuildingUpSelect<OuterScope, InScope> {
   public FROM<FromRelName extends keyof OuterScope>(
     cb: (
       db: {
@@ -182,7 +182,7 @@ export class InitialSelect<
 export class BeforeProject<
   OuterScope extends Record<string, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>
-> extends BuildingUpQuery<OuterScope, InScope> {
+> extends BuildingUpSelect<OuterScope, InScope> {
   public JOIN<FromRelName extends keyof OuterScope & string>(
     cb: (
       db: {
@@ -286,7 +286,7 @@ export class BeforeProject<
     }
   }
 
-  PROJECT<NewReturns extends { [columnname: string]: any }>(
+  PROJECT<Returns extends { [columnname: string]: any }>(
     cb: (scope: {
       [tableName in keyof InScope]: {
         [colName in keyof InScope[tableName]]: Expr<
@@ -294,9 +294,9 @@ export class BeforeProject<
         >;
       };
     }) => {
-      [colName in keyof NewReturns]: Expr<NewReturns[colName]>;
+      [colName in keyof Returns]: Expr<Returns[colName]>;
     }
-  ): Select<OuterScope, InScope, NewReturns> {
+  ): Select<OuterScope, InScope, Returns> {
     const scope = {} as {
       [relName in keyof InScope]: {
         [colName in keyof InScope[relName]]: Expr<InScope[relName][colName]>;
@@ -352,13 +352,13 @@ export class Joining<
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>,
   As extends string,
   JoiningRelation extends Record<FieldName, any>
-> extends BuildingUpQuery<OuterScope, InScope> {
+> extends BuildingUpSelect<OuterScope, InScope> {
   private asStr: string;
   private joiningRelation: RelationName | Select<any, any, JoiningRelation>;
 
   constructor(
     db: DB<OuterScope> | InMem<OuterScope>,
-    contents: BuildingUpQueryContents<OuterScope, InScope>,
+    contents: BuildingUpSelectContents<OuterScope, InScope>,
     asStr: As,
     joiningRelation: RelationName | Select<any, any, JoiningRelation>
   ) {
@@ -456,12 +456,12 @@ export class Select<
   OuterScope extends Record<RelationName, Record<FieldName, any>>,
   InScope extends Record<RelationNameInQuery, Record<FieldName, any>>,
   Returns extends Record<FieldName, any>
-> extends BuildingUpQuery<OuterScope, InScope> {
+> extends BuildingUpSelect<OuterScope, InScope> {
   private returns: { [colName in keyof Returns]: Expr<Returns[colName]> };
 
   constructor(
     db: DB<OuterScope> | InMem<OuterScope>,
-    contents: BuildingUpQueryContents<OuterScope, InScope>,
+    contents: BuildingUpSelectContents<OuterScope, InScope>,
     returns: { [colName in keyof Returns]: Expr<Returns[colName]> }
   ) {
     super(db, contents);
@@ -475,25 +475,7 @@ export class Select<
     return pg
       .unsafe(sqlText, undefined /* params */, { prepare: true })
       .raw()
-      .then((res) => this.deserializeResults(res));
-  }
-
-  private deserializeResults(rawRows: (Buffer | null)[][]): Returns[] {
-    debugger;
-    const names = object_keys(this.returns);
-    const self = this;
-    return rawRows.map(function (cols) {
-      const returnRow: Returns = {} as Returns;
-      for (let i = 0; i < names.length; i++) {
-        const name = names[i];
-        const returnsExpr = self.returns[name];
-        const col = cols[i];
-        returnRow[name as keyof Returns] = returnsExpr.encoder.deserialize(
-          col?.toString("utf8") || null
-        );
-      }
-      return returnRow;
-    });
+      .then((res) => deserializeResults(this.returns, res));
   }
 
   getReturns(): { [colName in keyof Returns]: Expr<Returns[colName]> } {
@@ -607,11 +589,31 @@ export class Select<
   }
 }
 
+function deserializeResults<Returns extends { [columnname: string]: any }>(
+  returnExprs: { [colName in keyof Returns]: Expr<Returns[colName]> },
+  rawRows: (Buffer | null)[][]
+): Returns[] {
+  const names = object_keys(returnExprs);
+  return rawRows.map(function (cols) {
+    const returnRow: Returns = {} as Returns;
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      const returnExpr = returnExprs[name];
+      const col = cols[i];
+      returnRow[name as keyof Returns] = returnExpr.encoder.deserialize(
+        col?.toString("utf8") || null
+      );
+    }
+    return returnRow;
+  });
+}
+
 function noop<T>(t: T): T {
   return t;
 }
 const noopEncoder = {
   deserialize: noop,
+  serialize: noop,
 };
 
 function makeExpressionsForRelationFromOuterScope<
@@ -680,6 +682,180 @@ function toEncoder(f: FieldDef<any>["type"]): Encoder<any> {
   }
 }
 
+export class InitialInsert<
+  OuterScope extends Record<RelationName, Record<FieldName, any>>
+> {
+  private db: DB<OuterScope>;
+
+  public constructor(db: DB<OuterScope>) {
+    this.db = db;
+  }
+
+  public INTO<IntoRelName extends keyof OuterScope & string>(
+    cb: (db: {
+      [tableName in keyof OuterScope & string]: tableName;
+    }) => IntoRelName
+  ): InsertInto<OuterScope, IntoRelName> {
+    const relname = cb({
+      ...(() => {
+        const relNames = {} as {
+          [tableName in keyof OuterScope & string]: tableName;
+        };
+        for (let k of object_keys(this.db.tables)) {
+          const asRelationName = k as RelationName;
+          relNames[k] = asRelationName;
+        }
+        return relNames;
+      })(),
+    });
+
+    return new InsertInto(this.db, relname);
+  }
+}
+
+export class InsertInto<
+  OuterScope extends Record<RelationName, Record<FieldName, any>>,
+  IntoRelName extends keyof OuterScope & string
+> {
+  private db: DB<OuterScope>;
+  private relname: IntoRelName;
+
+  public constructor(db: DB<OuterScope>, relname: IntoRelName) {
+    this.db = db;
+    this.relname = relname;
+  }
+
+  public VALUES(
+    values: OuterScope[IntoRelName]
+  ): Insert<OuterScope, IntoRelName> {
+    return new Insert(this.db, this.relname, values);
+  }
+}
+
+export class InsertWithReturning<
+  OuterScope extends Record<RelationName, Record<FieldName, any>>,
+  IntoRelName extends keyof OuterScope & string,
+  Returns extends { [columnname: string]: any } | null
+> {
+  protected db: DB<OuterScope>;
+  protected relname: IntoRelName;
+  protected values: OuterScope[IntoRelName];
+  protected returning:
+    | { [colName in keyof Returns]: Expr<Returns[colName]> }
+    | null;
+
+  public constructor(
+    db: DB<OuterScope>,
+    relname: IntoRelName,
+    values: OuterScope[IntoRelName],
+    returning: { [colName in keyof Returns]: Expr<Returns[colName]> } | null
+  ) {
+    this.db = db;
+    this.relname = relname;
+    this.values = values;
+    this.returning = returning;
+  }
+
+  toSql(): string {
+    const tableDef = this.db.tables[this.relname];
+    const self = this;
+    const returning = this.returning;
+
+    return [
+      "INSERT",
+      "INTO " + (this.relname as string),
+      "(" + object_keys(this.values as any).join(", ") + ")",
+      "VALUES ",
+      "(" +
+        object_keys(self.values as Record<FieldName, any>)
+          .map((k) => {
+            const fieldDef = tableDef.fields[k];
+            const encoder = toEncoder(fieldDef.type);
+            return encoder.serialize((self as any).values[k]);
+          })
+          .join(", ") +
+        ")",
+      returning === null
+        ? ""
+        : "RETURNING " +
+          object_keys(returning)
+            .map((key) => returning[key].asSql + " AS " + key.toString())
+            .join(", "),
+      ,
+    ]
+      .filter((s) => s !== "")
+      .join("\n");
+  }
+
+  async run(
+    pg: postgres.Sql<any>
+  ): Promise<Returns extends null ? null : Returns[]> {
+    const sqlText = this.toSql();
+    console.log("Running insert: ");
+    console.log(sqlText);
+    return pg
+      .unsafe(sqlText, undefined /* params */, { prepare: true })
+      .raw()
+      .then(
+        (res) =>
+          (this.returning === null
+            ? null
+            : deserializeResults(this.returning, res)) as Returns extends null
+            ? null
+            : Returns[]
+      );
+  }
+}
+
+export class Insert<
+  OuterScope extends Record<RelationName, Record<FieldName, any>>,
+  IntoRelName extends keyof OuterScope & string
+> extends InsertWithReturning<OuterScope, IntoRelName, null> {
+  public constructor(
+    db: DB<OuterScope>,
+    relname: IntoRelName,
+    values: OuterScope[IntoRelName]
+  ) {
+    super(db, relname, values, null);
+  }
+
+  public RETURNING<Returns extends { [columnname: string]: any }>(
+    cb: (table: {
+      [field in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][field]
+      >;
+    }) => {
+      [colName in keyof Returns]: Expr<Returns[colName]>;
+    }
+  ): InsertWithReturning<OuterScope, IntoRelName, Returns> {
+    const tableDef = this.db.tables[this.relname];
+    const scope = {} as {
+      [field in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][field]
+      >;
+    };
+
+    for (let key of object_keys(tableDef.fields)) {
+      const fieldDef: FieldDef<any> = tableDef.fields[key];
+      scope[key] = {
+        encoder:
+          // Should we take "nullable" into account here?
+          toEncoder(fieldDef.type),
+        asSql: fieldDef.name,
+        inMem: noop, // N/A
+      };
+    }
+
+    const returning = cb(scope);
+    return new InsertWithReturning(
+      this.db,
+      this.relname,
+      this.values,
+      returning
+    );
+  }
+}
+
 export class DB<
   AllTablesInDB extends { [tableName: string]: { [colName: string]: any } }
 > {
@@ -721,6 +897,10 @@ export class DB<
       groupBy: null,
     });
   }
+
+  public INSERT() {
+    return new InitialInsert<AllTablesInDB>(this);
+  }
 }
 
 export class InMem<
@@ -750,6 +930,7 @@ type Expr<A> = {
 };
 
 type Encoder<A> = {
+  serialize: (A: A) => string;
   deserialize: (b: any) => A;
 };
 

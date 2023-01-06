@@ -11,16 +11,23 @@ export const encoders: {
     deserialize: function (b: any) {
       return b === "t" /* in sql */ || b === true /* in json */ ? true : false;
     },
+    serialize: function (b: boolean) {
+      return b === true ? "true" : b === false ? "false" : "null";
+    },
   },
   number: {
     deserialize: function (b: any) {
       return +b;
+    },
+    serialize: function (n: number) {
+      return n.toString();
     },
   },
   string: {
     deserialize: function (b: any) {
       return b;
     },
+    serialize: (s: string) => s,
   },
 } as const;
 
@@ -124,6 +131,7 @@ export function CONCAT(...preds: [Expr<string>, ...Expr<string>[]]) {
 
 type Encoder<A> = {
   deserialize: (b: any) => A;
+  serialize: (A: A) => string;
 };
 
 // type GetTypeFromExpr<F> = F extends Expr<infer T> ? T : never;
