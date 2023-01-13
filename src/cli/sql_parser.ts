@@ -1,6 +1,7 @@
 import {
   AlterTableStatement,
   ColumnConstraint,
+  CreateEnumType,
   CreateMaterializedViewStatement,
   CreateTableStatement,
   CreateViewStatement,
@@ -17,6 +18,10 @@ export type DbDefinition = {
     name: QName;
     fields: Field[];
   }[];
+  enums: {
+    name: QName;
+    values: string[];
+  }[];
 };
 
 export function parseSetupScripts(ast: Statement[]): DbDefinition {
@@ -29,13 +34,15 @@ export function parseSetupScripts(ast: Statement[]): DbDefinition {
         a.type === "create materialized view"
       ) {
         return doCreateView(acc, a);
+      } else if (a.type === "create enum") {
+        return doCreateTypeAsEnum(acc, a);
       } else if (a.type === "alter table") {
         return doAlterTable(acc, a);
       } else {
         return acc;
       }
     },
-    { tables: [] }
+    { tables: [], enums: [] }
   );
 }
 
@@ -118,6 +125,16 @@ function doCreateView(
 
 function doAlterTable(_g: DbDefinition, s: AlterTableStatement): DbDefinition {
   return notImplementedYet(s);
+}
+
+function doCreateTypeAsEnum(g: DbDefinition, s: CreateEnumType): DbDefinition {
+  return {
+    ...g,
+    enums: g.enums.concat({
+      name: s.name,
+      values: s.values.map((v) => v.value),
+    }),
+  };
 }
 
 function mapPartial<T, U>(

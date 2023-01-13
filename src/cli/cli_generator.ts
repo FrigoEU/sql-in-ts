@@ -54,6 +54,13 @@ async function go() {
     allStatements.flatMap((f) => f.statements)
   );
 
+  const customTypeDefinitions: string = parsedDbDef.enums
+    .map(
+      (en) =>
+        `type ${en.name.name} = ${en.values.map((v) => `"${v}"`).join(" | ")};`
+    )
+    .join("\n");
+
   const fieldDescrs: string[] = [];
   const typeDescrs: string[] = [];
 
@@ -89,6 +96,8 @@ ${fieldsForType.join("\n")}
   }
 
   const fullDef = `
+${customTypeDefinitions}
+
 export const db = new DB<MyDb>({
   tables: {
 ${fieldDescrs.join("")}
