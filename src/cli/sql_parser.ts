@@ -161,14 +161,6 @@ export type ArrayT<T> = {
   subtype: "array" | "list";
   typevar: T;
 };
-export type JsonKnownT = {
-  kind: "jsonknown";
-  record: RecordT;
-};
-export type RecordT = {
-  kind: "record";
-  fields: Field[];
-};
 type Field = {
   name: Name;
   type: SimpleT;
@@ -181,7 +173,7 @@ export type VoidT = {
   // represents nothing, so zero rows, like when doing an INSERT without RETURNING
   kind: "void";
 };
-export type SimpleT = JsonKnownT | ScalarT | NullableT<any> | ArrayT<any>;
+export type SimpleT = ScalarT | NullableT<any> | ArrayT<any>;
 
 export const BuiltinTypeConstructors = {
   Nullable: <T extends SimpleT>(t: T): NullableT<T> => ({

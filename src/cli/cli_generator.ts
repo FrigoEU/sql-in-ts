@@ -1,13 +1,6 @@
 import * as fs from "fs/promises";
-import { min, repeat } from "lodash";
 import * as path from "path";
-import {
-  CreateFunctionStatement,
-  NodeLocation,
-  parse,
-  QName,
-  Statement,
-} from "trader-pgsql-ast-parser";
+import { parse, Statement } from "trader-pgsql-ast-parser";
 import { checkAllCasesHandled } from "../query";
 import { parseSetupScripts, SimpleT } from "./sql_parser";
 
@@ -158,14 +151,6 @@ function showTypeAsTypescriptType(t: SimpleT): string {
     } else {
       return t.name.name;
     }
-  } else if (t.kind === "jsonknown") {
-    return (
-      "{\n" +
-      t.record.fields
-        .map((f) => `  ${f.name?.name}: ${showTypeAsTypescriptType(f.type)}`)
-        .join(",\n") +
-      "\n}"
-    );
   } else {
     return checkAllCasesHandled(t);
   }

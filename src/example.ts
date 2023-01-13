@@ -1,4 +1,4 @@
-import { demoDb } from "./demo2";
+import { db } from "./demo2";
 import { EQ, InMem } from "./query2";
 import postgres from "postgres";
 
@@ -8,7 +8,7 @@ const pg = postgres({
 
 go().then(() => process.exit(0));
 async function go() {
-  const ib = demoDb
+  const ib = db
     .INSERT()
     .INTO((s) => s.users)
     .VALUES({ id: 10 })
@@ -17,7 +17,7 @@ async function go() {
     }));
   console.log(ib.toSql());
 
-  const qy = demoDb
+  const qy = db
     .SELECT()
     .FROM((db) => db.users)
     .JOIN((db) => db.emails)
@@ -26,6 +26,7 @@ async function go() {
       userid: s.users.id,
       emailid: s.emails.id,
       emailverified: s.emails.verified,
+      firealarm: s.emails.firealarm_event_type,
     }));
 
   console.log(qy.toSql());
@@ -58,7 +59,7 @@ async function go() {
   console.log(JSON.stringify(inMemRes, null, 2));
 
   console.log(
-    await demoDb
+    await db
       .SELECT()
       .FROM((s) => s.users)
       .PROJECT((s) => s.users)

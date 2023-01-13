@@ -1,7 +1,8 @@
-import { isEqual, isString } from "lodash";
+import { includes, isEqual, isString } from "lodash";
 import { encoders } from "./query";
 import { SimpleT } from "./cli/sql_parser";
 import postgres from "postgres";
+import { arrayParser } from "./arrayparser";
 
 type Tag<T> = { _tag: T };
 type RelationNameInQuery = string & Tag<"RelationNameInQuery">;
@@ -678,14 +679,40 @@ function makeExpressionsForRelationFromOuterScope<
 }
 
 function toEncoder(f: FieldDef<any>["type"]): Encoder<any> {
-  if (f === "string") {
-    return encoders.string;
-  } else if (f === "int") {
+  if (f.kind === "nullable") {
+    const innerEncoder = toEncoder(f.typevar);
+    return {
+      serialize: (n) => (n === null ? "NULL" : innerEncoder.serialize(n)),
+      deserialize: (n) => (n === null ? null : innerEncoder.deserialize(n)),
+    };
+  } else if (f.kind === "array") {
+    const innerEncoder = toEncoder(f.typevar);
+    return {
+      serialize: function (n: any[]) {
+        return `'{` + n.map((m) => innerEncoder.serialize(m)).join(",") + `}'`;
+      },
+      deserialize: function (b: any) {
+        return arrayParser(b, innerEncoder.deserialize);
+      },
+    };
+  } else if (
+    [
+      "smallint",
+      "integer",
+      "bigint",
+      "numeric",
+      "double",
+      "float2",
+      "float4",
+      "float8",
+      "real",
+    ].includes(f.name.name)
+  ) {
     return encoders.number;
-  } else if (f === "boolean") {
+  } else if (f.name.name === "boolean") {
     return encoders.boolean;
   } else {
-    throw new Error(`Unknown field type ${f}`);
+    return noopEncoder;
   }
 }
 
@@ -776,7 +803,7 @@ export class InsertWithReturning<
       "(" + object_keys(this.values as any).join(", ") + ")",
       "VALUES ",
       "(" +
-        object_keys(self.values as Record<FieldName, any>)
+        object_keys((self.values as unknown) as Record<FieldName, any>)
           .map((k) => {
             const fieldDef = tableDef.fields[k];
             const encoder = toEncoder(fieldDef.type);
@@ -988,7 +1015,13 @@ export function object_keys<T extends object>(obj: T): Array<keyof T> {
   return Object.keys(obj) as Array<keyof T>;
 }
 
-export function EQ<A>(left: Expr<A>, right: Expr<A>): Expr<boolean> {
+export function EQ<A>(left: Expr<A>, right: Expr<A>): Expr<boolean>;
+export function EQ<A>(left: Expr<A>, right: Expr<A | null>): Expr<boolean>;
+export function EQ<A>(left: Expr<A | null>, right: Expr<A>): Expr<boolean>;
+export function EQ<A>(
+  left: Expr<A | null>,
+  right: Expr<A | null>
+): Expr<boolean> {
   return {
     encoder: encoders.boolean,
     asSql: `${left.asSql} = ${right.asSql}`,
