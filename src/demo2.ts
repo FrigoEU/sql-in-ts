@@ -10,12 +10,7 @@ export const demoDb = new DB<DemoDb>({
       fields: {
         id: { name: "id", type: "int", nullable: false },
       },
-    } as TableDef<
-      "users",
-      {
-        id: FieldDef<number>;
-      }
-    >,
+    },
     emails: {
       __meta: {
         name: "emails",
@@ -26,14 +21,7 @@ export const demoDb = new DB<DemoDb>({
         user_id: { name: "user_id", type: "int", nullable: true },
         verified: { name: "verified", type: "boolean", nullable: false },
       },
-    } as TableDef<
-      "emails",
-      {
-        id: FieldDef<number>;
-        user_id: FieldDef<number>;
-        verified: FieldDef<boolean>;
-      }
-    >,
+    },
     addresses: {
       __meta: {
         name: "addresses",

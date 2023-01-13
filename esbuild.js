@@ -1,7 +1,7 @@
 const esbuild = require("esbuild");
 
 const buildOptions = {
-  entryPoints: ["src/index.ts", "src/example.ts"],
+  entryPoints: ["src/index.ts", "src/example.ts", "src/cli/cli_generator.ts"],
   // entryPoints: ["src/index_kysely.ts"],
   bundle: true,
   sourcemap: true,

@@ -10,6 +10,7 @@
     "kysely": "^0.22.0",
     "lodash": "^4.17.21",
     "pg": "^8.8.0",
+    "trader-pgsql-ast-parser": "10.5.2",
     "postgres": "^3.3.1"
   },
   "scripts": {
@@ -17,7 +18,8 @@
     "start": "node esbuild.js && node ./out/index.js",
     "example": "node esbuild.js && node ./out/example.js",
     "example_debug": "node esbuild.js && node --inspect-brk ./out/example.js",
-    "debug": "node esbuild.js && node --inspect-brk ./out/index.js"
+    "debug": "node esbuild.js && node --inspect-brk ./out/index.js",
+    "gen": "node esbuild.js && node ./out/cli/cli_generator.js -f src/demo.sql -o out/demo.ts"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.182",
