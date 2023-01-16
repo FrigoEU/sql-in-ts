@@ -11,6 +11,7 @@ import {
   PGNode,
   QName,
   Statement,
+  TableAlteration,
 } from "trader-pgsql-ast-parser";
 
 export type DbDefinition = {
@@ -65,6 +66,7 @@ function doCreateTable(g: DbDefinition, s: CreateTableStatement): DbDefinition {
       return acc.concat({
         name: c.name,
         type: mkType(c.dataType, c.constraints || []),
+        hasDefault: c.constraints?.some((c) => c.type === "default") || false,
       });
     }
   }, []);
@@ -117,14 +119,80 @@ function doCreateTable(g: DbDefinition, s: CreateTableStatement): DbDefinition {
   };
 }
 function doCreateView(
-  _g: DbDefinition,
+  g: DbDefinition,
   s: CreateViewStatement | CreateMaterializedViewStatement
 ): DbDefinition {
-  return notImplementedYet(s);
+  console.log("Create view not implemented yet");
+  return g;
 }
 
-function doAlterTable(_g: DbDefinition, s: AlterTableStatement): DbDefinition {
-  return notImplementedYet(s);
+function doAlterTable(g: DbDefinition, s: AlterTableStatement): DbDefinition {
+  return s.changes.reduce(handleChange, g);
+  function handleChange(
+    g: DbDefinition,
+    change: TableAlteration
+  ): DbDefinition {
+    if (
+      change.type === "owner" ||
+      // For now, we don't use constraints (eg: primary key, foreign key, ...)
+      change.type === "rename constraint" ||
+      change.type === "add constraint" ||
+      change.type === "drop constraint"
+    ) {
+      return g;
+    }
+    if (
+      change.type === "rename" ||
+      change.type === "rename column" ||
+      change.type === "add column" ||
+      change.type === "drop column"
+    ) {
+      return notImplementedYet(s);
+    }
+    const curr = g.tables.find((t) => eqQNames(t.name, s.table));
+    if (!curr) {
+      throw new Error(
+        `Failed to alter table ${JSON.stringify(s.table)}, not found!`
+      );
+    }
+    const column = curr.fields.find((f) => f.name.name === change.column.name);
+    if (!column) {
+      throw new Error(
+        `Failed to alter column ${change.column.name} in table ${JSON.stringify(
+          s.table
+        )}, column not found!`
+      );
+    }
+
+    const newColumn =
+      change.alter.type === "set default"
+        ? { ...column, hasDefault: true }
+        : change.alter.type === "drop default"
+        ? { ...column, hasDefault: false }
+        : change.alter.type === "add generated"
+        ? column
+        : change.alter.type === "set not null"
+        ? { ...column, type: unnullify(column.type) }
+        : change.alter.type === "drop not null"
+        ? { ...column, type: nullify(column.type) }
+        : change.alter.type === "set type"
+        ? { ...column, type: mkType(change.alter.dataType, []) }
+        : column;
+
+    return {
+      ...g,
+      tables: g.tables
+        .filter((t) => !eqQNames(t.name, s.table))
+        .concat([
+          {
+            ...curr,
+            fields: curr.fields
+              .filter((f) => f.name.name !== change.column.name)
+              .concat(newColumn),
+          },
+        ]),
+    };
+  }
 }
 
 function doCreateTypeAsEnum(g: DbDefinition, s: CreateEnumType): DbDefinition {
@@ -164,6 +232,7 @@ export type ArrayT<T> = {
 type Field = {
   name: Name;
   type: SimpleT;
+  hasDefault: boolean;
 };
 export type ScalarT = {
   kind: "scalar";
@@ -220,6 +289,14 @@ function nullify(s: SimpleT): SimpleT {
     return s;
   } else {
     return BuiltinTypeConstructors.Nullable(s);
+  }
+}
+
+function unnullify(s: SimpleT): SimpleT {
+  if (s.kind === "nullable") {
+    return s.typevar;
+  } else {
+    return s;
   }
 }
 

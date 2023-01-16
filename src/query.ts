@@ -1,11 +1,28 @@
 import { isBoolean, isNumber, isString, isSymbol } from "lodash";
 import postgres from "postgres";
 import { arrayParser } from "./arrayparser";
+import * as joda from "@js-joda/core";
+
+// if (t.name.name === "date") {
+//   return `LocalDate.parse(${literalVar})`;
+// } else if (t.name.name === "time") {
+//   return `LocalTime.parse(${literalVar})`;
+// } else if (t.name.name === "timestamp with time zone") {
+//   return `Instant.parse(${literalVar})`;
+// } else if (
+//   t.name.name === "timestamp without time zone" ||
+//     t.name.name === "timestamp"
+// ) {
+//   return `LocalDateTime.parse(${literalVar}.replace(" ", "T"))`;
 
 export const encoders: {
   boolean: Encoder<boolean>;
   number: Encoder<number>;
   string: Encoder<string>;
+  instant: Encoder<joda.Instant>;
+  time: Encoder<joda.LocalTime>;
+  timestampWithoutTimeZone: Encoder<joda.LocalDateTime>;
+  date: Encoder<joda.LocalDate>;
 } = {
   boolean: {
     deserialize: function (b: any) {
@@ -28,6 +45,30 @@ export const encoders: {
       return b;
     },
     serialize: (s: string) => s,
+  },
+  instant: {
+    deserialize: function (b: any) {
+      return joda.Instant.parse(b);
+    },
+    serialize: (s: joda.Instant) => s.toString(),
+  },
+  time: {
+    deserialize: function (b: any) {
+      return joda.LocalTime.parse(b);
+    },
+    serialize: (s: joda.LocalTime) => s.toString(),
+  },
+  timestampWithoutTimeZone: {
+    deserialize: function (b: any) {
+      return joda.LocalDateTime.parse(b);
+    },
+    serialize: (s: joda.LocalDateTime) => s.toString(),
+  },
+  date: {
+    deserialize: function (b: any) {
+      return joda.LocalDate.parse(b);
+    },
+    serialize: (s: joda.LocalDate) => s.toString(),
   },
 } as const;
 
@@ -57,11 +98,9 @@ export const op = {
   PLUS,
 };
 
-export function JSON_BUILD_OBJECT<Obj extends { [key: string]: any }>(
-  o: {
-    [K in keyof Obj]: Expr<Obj[K]>;
-  }
-): Expr<Obj> {
+export function JSON_BUILD_OBJECT<Obj extends { [key: string]: any }>(o: {
+  [K in keyof Obj]: Expr<Obj[K]>;
+}): Expr<Obj> {
   const keys: (keyof Obj)[] = object_keys(o);
 
   const keysAndValues = keys
@@ -249,9 +288,8 @@ export class Select<
     ) => TableOrNamedSelect<FromTableName, FromTable>
   ): Select<AllTablesInDB, NewTablesInScope, Returns> {
     const tableOrSelect = cb(this.makeDbObj());
-    const [fromClause, name, newTable] = this.extractTableOrNamedSelect(
-      tableOrSelect
-    );
+    const [fromClause, name, newTable] =
+      this.extractTableOrNamedSelect(tableOrSelect);
     const newTableInScope = { [name]: newTable };
     const newTablesInScope = {
       ...this.contents.tablesInScope,
@@ -273,10 +311,9 @@ export class Select<
   JOIN<
     FromTableName extends string,
     FromTable extends { [colName: string]: any },
-    NewTablesInScope extends TablesInScope &
-      {
-        [k in FromTableName]: FromTable;
-      }
+    NewTablesInScope extends TablesInScope & {
+      [k in FromTableName]: FromTable;
+    }
   >(
     cb: (
       db: {
@@ -286,20 +323,17 @@ export class Select<
         >;
       } & { SELECT: () => Select<AllTablesInDB, {}, {}> }
     ) => TableOrNamedSelect<FromTableName, FromTable>,
-    makeExpr: (
-      scope: {
-        [tableName in keyof NewTablesInScope]: {
-          [colName in keyof NewTablesInScope[tableName]]: Expr<
-            NewTablesInScope[tableName][colName]
-          >;
-        };
-      }
-    ) => Expr<boolean>
+    makeExpr: (scope: {
+      [tableName in keyof NewTablesInScope]: {
+        [colName in keyof NewTablesInScope[tableName]]: Expr<
+          NewTablesInScope[tableName][colName]
+        >;
+      };
+    }) => Expr<boolean>
   ): Select<AllTablesInDB, NewTablesInScope, Returns> {
     const tableOrSelect = cb(this.makeDbObj());
-    const [clause, name, newTable] = this.extractTableOrNamedSelect(
-      tableOrSelect
-    );
+    const [clause, name, newTable] =
+      this.extractTableOrNamedSelect(tableOrSelect);
     const newTableInScope = { [name]: newTable };
     const newTablesInScope = {
       ...this.contents.tablesInScope,
@@ -384,10 +418,9 @@ export class Select<
   JOIN_LEFT<
     JoiningTableName extends string,
     JoiningTable extends { [colName: string]: any },
-    NewTablesInScope extends TablesInScope &
-      {
-        [k in JoiningTableName]: JoiningTable;
-      },
+    NewTablesInScope extends TablesInScope & {
+      [k in JoiningTableName]: JoiningTable;
+    },
     NewTablesInScopeAsExprs extends {
       [tableName in keyof NewTablesInScope]: {
         [colName in keyof NewTablesInScope[tableName]]: Expr<
@@ -395,10 +428,9 @@ export class Select<
         >;
       };
     },
-    NewTablesInScopeNullable extends TablesInScope &
-      {
-        [k in JoiningTableName]: MakeRecordNullable<JoiningTable>;
-      },
+    NewTablesInScopeNullable extends TablesInScope & {
+      [k in JoiningTableName]: MakeRecordNullable<JoiningTable>;
+    },
     NewTablesInScopeNullableAsExprs extends {
       [tableName in keyof NewTablesInScopeNullable]: {
         [colName in keyof NewTablesInScopeNullable[tableName]]: Expr<
@@ -418,9 +450,8 @@ export class Select<
     makeExpr: (scope: NewTablesInScopeAsExprs) => Expr<boolean>
   ): Select<AllTablesInDB, NewTablesInScopeNullable, Returns> {
     const tableOrSelect = cb(this.makeDbObj());
-    const [clause, name, newTable] = this.extractTableOrNamedSelect(
-      tableOrSelect
-    );
+    const [clause, name, newTable] =
+      this.extractTableOrNamedSelect(tableOrSelect);
     const newTableInScope = { [name]: newTable };
     const newTableInScopeNullable = {
       [name]: nullifyRecord(newTable),
@@ -453,15 +484,13 @@ export class Select<
   }
 
   WHERE(
-    cb: (
-      scope: {
-        [t in keyof TablesInScope]: {
-          [f in keyof TablesInScope[t]]: Expr<
-            GetTypeFromFieldDef<TablesInScope[t][f]>
-          >;
-        };
-      }
-    ) => Expr<boolean>
+    cb: (scope: {
+      [t in keyof TablesInScope]: {
+        [f in keyof TablesInScope[t]]: Expr<
+          GetTypeFromFieldDef<TablesInScope[t][f]>
+        >;
+      };
+    }) => Expr<boolean>
   ): Select<AllTablesInDB, TablesInScope, Returns> {
     const expr = cb(this.contents.tablesInScope);
     return new Select(this.db, {
@@ -471,15 +500,13 @@ export class Select<
   }
 
   GROUP_BY(
-    cb: (
-      scope: {
-        [t in keyof TablesInScope]: {
-          [f in keyof TablesInScope[t]]: Expr<
-            GetTypeFromFieldDef<TablesInScope[t][f]>
-          >;
-        };
-      }
-    ) => Expr<any> | Expr<any>[]
+    cb: (scope: {
+      [t in keyof TablesInScope]: {
+        [f in keyof TablesInScope[t]]: Expr<
+          GetTypeFromFieldDef<TablesInScope[t][f]>
+        >;
+      };
+    }) => Expr<any> | Expr<any>[]
   ): Select<AllTablesInDB, TablesInScope, Returns> {
     const scope = this.contents.tablesInScope;
 
@@ -492,15 +519,13 @@ export class Select<
   }
 
   PROJECT<NewReturns extends { [columnname: string]: ScalarT }>(
-    cb: (
-      scope: {
-        [tableName in keyof TablesInScope]: {
-          [colName in keyof TablesInScope[tableName]]: Expr<
-            TablesInScope[tableName][colName]
-          >;
-        };
-      }
-    ) => {
+    cb: (scope: {
+      [tableName in keyof TablesInScope]: {
+        [colName in keyof TablesInScope[tableName]]: Expr<
+          TablesInScope[tableName][colName]
+        >;
+      };
+    }) => {
       [colName in keyof NewReturns]: Expr<NewReturns[colName]>;
     }
   ): Select<AllTablesInDB, TablesInScope, NewReturns> {
@@ -688,11 +713,9 @@ type TableOrNamedSelectInternal =
       as: string;
     };
 
-function nullifyRecord<Fields extends { [fieldname: string]: any }>(
-  t: {
-    [K in keyof Fields]: Expr<Fields[K]>;
-  }
-): { [K in keyof Fields]: Expr<null | Fields[K]> } {
+function nullifyRecord<Fields extends { [fieldname: string]: any }>(t: {
+  [K in keyof Fields]: Expr<Fields[K]>;
+}): { [K in keyof Fields]: Expr<null | Fields[K]> } {
   const nullifiedFields = {} as {
     [K in keyof Fields]: Expr<null | Fields[K]>;
   };

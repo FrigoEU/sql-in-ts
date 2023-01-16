@@ -35,10 +35,54 @@ async function go() {
   for (let sqlFile of allSqlFiles) {
     console.log(`Processing file ${sqlFile}`);
     const fileContents = await fs.readFile(sqlFile, "utf-8");
-    const statements: Statement[] = parse(fileContents, {
-      locationTracking: true,
-    });
-    allStatements.push({ fileName: sqlFile, statements });
+    const filteredFileContents = fileContents
+      .replace(/CREATE\ AGGREGATE\ [^;]*;/g, "")
+      .replace(/CREATE\ POLICY\ [^;]*;/g, "")
+      .replace(/CREATE\ FUNCTION([^$]*)\$\$([^]*)\$\$;/g, "")
+      .replace(/ALTER\ FUNCTION\ [^;]*;/g, "")
+      .replace(/CREATE\ SEQUENCE\ [^;]*;/g, "")
+      .replace(/ALTER\ SEQUENCE\ [^;]*;/g, "")
+      .replace(/CREATE\ INDEX\ [^;]*;/g, "")
+      .replace(/GRANT\ [^;]*;/g, "")
+      .replace(/--.*\n/g, "")
+      .split("\n")
+      .filter(
+        (s) =>
+          !s.startsWith("ALTER TYPE") &&
+          !s.startsWith("CREATE EXTENSION") &&
+          !s.startsWith("COMMENT ON EXTENSION") &&
+          !s.startsWith("ALTER FUNCTION") &&
+          !s.startsWith("CREATE TRIGGER") &&
+          !s.startsWith("ALTER AGGREGATE")
+      )
+      .map((s) =>
+        s
+          .replace("PARALLEL SAFE", "")
+          .replace("$_$", "$$$$")
+          .replace("NOT VALID", "")
+          .replace(/ALTER\ TABLE\ \S*\ ENABLE\ ROW\ LEVEL\ SECURITY;/, "")
+      );
+    try {
+      const statements: Statement[] = parse(filteredFileContents.join("\n"), {
+        locationTracking: true,
+      });
+      allStatements.push({ fileName: sqlFile, statements });
+    } catch (err) {
+      if ((err as any).token && (err as any).token._location) {
+        console.log(
+          `On location:\n` +
+            filteredFileContents
+              .join("\n")
+              .substring(
+                (err as any).token._location.start - 80,
+                (err as any).token._location.end + 80
+              )
+        );
+        process.exit(1);
+      } else {
+        throw err;
+      }
+    }
   }
 
   console.log(`Processing ${allStatements.length} statements`);
@@ -89,6 +133,8 @@ ${fieldsForType.join("\n")}
   }
 
   const fullDef = `
+import * as joda from "@js-joda/core";
+
 ${customTypeDefinitions}
 
 export const db = new DB<MyDb>({
@@ -132,22 +178,39 @@ function showTypeAsTypescriptType(t: SimpleT): string {
     ) {
       return "number";
     } else if (
-      ["text", "name", "char", "character", "varchar", "nvarchar"].includes(
-        t.name.name
-      )
+      [
+        "text",
+        "name",
+        "char",
+        "character",
+        "varchar",
+        "nvarchar",
+        "uuid",
+      ].includes(t.name.name)
     ) {
       return "string";
+    } else if (["tstzrange"].includes(t.name.name)) {
+      return "unknown";
     } else if (["bytea"].includes(t.name.name)) {
       return "Buffer";
+    } else if (t.name.name === "character varying") {
+      return "string";
     } else if (t.name.name === "date") {
-      return "LocalDate";
-    } else if (t.name.name === "time") {
-      return "LocalTime";
+      return "joda.LocalDate";
+    } else if (
+      t.name.name === "time" ||
+      t.name.name === "time without time zone"
+    ) {
+      return "joda.LocalTime";
     } else if (
       t.name.name === "timestamp without time zone" ||
       t.name.name === "timestamp"
     ) {
-      return "LocalDateTime";
+      return "joda.LocalDateTime";
+    } else if (t.name.name === "json" || t.name.name === "jsonb") {
+      return "any";
+    } else if (t.name.name === "timestamp with time zone") {
+      return "joda.Instant";
     } else {
       return t.name.name;
     }
