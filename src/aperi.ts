@@ -1,5 +1,5 @@
 import * as joda from "@js-joda/core";
-import { DB } from "./query2";
+import { DB } from ".";
 
 type authorization_type = "caring" | "nursing" | "medication" | "caringplus";
 type bloodpressure_context_value = "standing" | "sitting" | "lying";
@@ -3161,14 +3161,16 @@ export const db = new DB<MyDb>({
           },
         },
         engine_call_action_viewpoint_notification_acknowledgment_identi: {
-          name: "engine_call_action_viewpoint_notification_acknowledgment_identi",
+          name:
+            "engine_call_action_viewpoint_notification_acknowledgment_identi",
           type: {
             kind: "nullable",
             typevar: { kind: "scalar", name: { name: "integer" } },
           },
         },
         engine_call_action_viewpoint_notification_termination_identifie: {
-          name: "engine_call_action_viewpoint_notification_termination_identifie",
+          name:
+            "engine_call_action_viewpoint_notification_termination_identifie",
           type: {
             kind: "nullable",
             typevar: { kind: "scalar", name: { name: "integer" } },

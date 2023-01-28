@@ -1,6 +1,8 @@
-import { DB, FieldDef, TableDef } from "./query";
+import { DB } from ".";
 
-export const demoDb = new DB<DemoDb>({
+type firealarm_event_type = "firealarm" | "disruption";
+
+export const db = new DB<MyDb>({
   tables: {
     users: {
       __meta: {
@@ -8,47 +10,47 @@ export const demoDb = new DB<DemoDb>({
         schema: "public",
       },
       fields: {
-        id: { name: "id", type: "int", nullable: false },
+        id: { name: "id", type: { kind: "scalar", name: { name: "bigint" } } },
       },
-    } as TableDef<
-      "users",
-      {
-        id: FieldDef<number>;
-      }
-    >,
+    },
     emails: {
       __meta: {
         name: "emails",
         schema: "public",
       },
       fields: {
-        id: { name: "id", type: "int", nullable: false },
-        user_id: { name: "user_id", type: "int", nullable: true },
-        verified: { name: "verified", type: "boolean", nullable: false },
+        id: { name: "id", type: { kind: "scalar", name: { name: "bigint" } } },
+        user_id: {
+          name: "user_id",
+          type: { kind: "scalar", name: { name: "bigint" } },
+        },
+        verified: {
+          name: "verified",
+          type: { kind: "scalar", name: { name: "boolean" } },
+        },
+        firealarm_event_type: {
+          name: "firealarm_event_type",
+          type: { kind: "scalar", name: { name: "firealarm_event_type" } },
+        },
       },
-    } as TableDef<
-      "emails",
-      {
-        id: FieldDef<number>;
-        user_id: FieldDef<number>;
-        verified: FieldDef<boolean>;
-      }
-    >,
+    },
     addresses: {
       __meta: {
         name: "addresses",
         schema: "public",
       },
       fields: {
-        id: { name: "id", type: "int", nullable: false },
-        user_id: { name: "user_id", type: "int", nullable: false },
+        id: { name: "id", type: { kind: "scalar", name: { name: "bigint" } } },
+        user_id: {
+          name: "user_id",
+          type: { kind: "scalar", name: { name: "bigint" } },
+        },
       },
     },
   },
-  views: [],
 } as const);
 
-export type DemoDb = {
+export type MyDb = {
   users: usersTable;
   emails: emailsTable;
   addresses: addressesTable;
@@ -60,8 +62,9 @@ type usersTable = {
 
 type emailsTable = {
   id: number;
-  user_id: number | null;
+  user_id: number;
   verified: boolean;
+  firealarm_event_type: firealarm_event_type;
 };
 
 type addressesTable = {

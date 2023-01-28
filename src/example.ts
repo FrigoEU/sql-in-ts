@@ -1,5 +1,5 @@
-import { db } from "./demo2";
-import { EQ, InMem } from "./query2";
+import { db } from "./demo";
+import { EQ, InMem } from ".";
 import postgres from "postgres";
 
 const pg = postgres({

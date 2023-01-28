@@ -1,7 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parse, Statement } from "trader-pgsql-ast-parser";
-import { checkAllCasesHandled } from "../query";
 import { parseSetupScripts, SimpleT } from "./sql_parser";
 
 go();
@@ -134,6 +133,7 @@ ${fieldsForType.join("\n")}
 
   const fullDef = `
 import * as joda from "@js-joda/core";
+import {DB} from "sql-in-ts";
 
 ${customTypeDefinitions}
 
@@ -249,4 +249,10 @@ async function findSqlFilesInDir(dir: string): Promise<string[]> {
     }
   }
   return res;
+}
+
+export function checkAllCasesHandled(a: never): never {
+  throw new Error(
+    `checkAllCasesHandled assertion failed: ${JSON.stringify(a)}`
+  );
 }
