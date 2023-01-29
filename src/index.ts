@@ -769,25 +769,25 @@ export const encoders: {
     deserialize: function (b: any) {
       return joda.Instant.parse(b);
     },
-    serialize: (s: joda.Instant) => s.toString(),
+    serialize: (s: joda.Instant) => "'" + s.toString() + "'",
   },
   time: {
     deserialize: function (b: any) {
       return joda.LocalTime.parse(b);
     },
-    serialize: (s: joda.LocalTime) => s.toString(),
+    serialize: (s: joda.LocalTime) => "'" + s.toString() + "'",
   },
   timestampWithoutTimeZone: {
     deserialize: function (b: any) {
       return joda.LocalDateTime.parse(b);
     },
-    serialize: (s: joda.LocalDateTime) => s.toString(),
+    serialize: (s: joda.LocalDateTime) => "'" + s.toString() + "'",
   },
   date: {
     deserialize: function (b: any) {
       return joda.LocalDate.parse(b);
     },
-    serialize: (s: joda.LocalDate) => s.toString(),
+    serialize: (s: joda.LocalDate) => "'" + s.toString() + "'",
   },
 } as const;
 
