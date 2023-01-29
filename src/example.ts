@@ -1,5 +1,5 @@
 import { db } from "./demo";
-import { EQ, InMem } from ".";
+import { EQ, InMem, val } from ".";
 import postgres from "postgres";
 
 const pg = postgres({
@@ -11,7 +11,7 @@ async function go() {
   const ib = db
     .INSERT()
     .INTO((s) => s.users)
-    .VALUES({ id: 10 })
+    .VALUES(() => ({ id: val(10) }))
     .RETURNING((s) => ({
       id: s.id,
     }));
