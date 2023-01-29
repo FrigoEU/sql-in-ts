@@ -791,6 +791,17 @@ export const encoders: {
   },
 } as const;
 
+function arrayEncoder<T>(innerEncoder: Encoder<T>): Encoder<Array<T>> {
+  return {
+    serialize: function (n: any[]) {
+      return `'{` + n.map((m) => innerEncoder.serialize(m)).join(",") + `}'`;
+    },
+    deserialize: function (b: any) {
+      return arrayParser(b, innerEncoder.deserialize);
+    },
+  };
+}
+
 function toEncoder(f: FieldDef<any>["type"]): Encoder<any> {
   if (f.kind === "nullable") {
     const innerEncoder = toEncoder(f.typevar);
@@ -799,15 +810,7 @@ function toEncoder(f: FieldDef<any>["type"]): Encoder<any> {
       deserialize: (n) => (n === null ? null : innerEncoder.deserialize(n)),
     };
   } else if (f.kind === "array") {
-    const innerEncoder = toEncoder(f.typevar);
-    return {
-      serialize: function (n: any[]) {
-        return `'{` + n.map((m) => innerEncoder.serialize(m)).join(",") + `}'`;
-      },
-      deserialize: function (b: any) {
-        return arrayParser(b, innerEncoder.deserialize);
-      },
-    };
+    return arrayEncoder(toEncoder(f.typevar));
   } else if (
     [
       "smallint",
@@ -1178,6 +1181,57 @@ function checkAllCasesHandled(a: never): never {
   throw new Error(
     `checkAllCasesHandled assertion failed: ${JSON.stringify(a)}`
   );
+}
+
+export function JSON_BUILD_OBJECT<Obj extends { [key: string]: any }>(o: {
+  [K in keyof Obj]: Expr<Obj[K]>;
+}): Expr<Obj> {
+  const keys: (keyof Obj)[] = object_keys(o);
+
+  const keysAndValues = keys
+    .map((key) => `'${String(key)}', ${o[key].asSql}`)
+    .join(", ");
+
+  return {
+    encoder: {
+      deserialize: function (b: string) {
+        console.log(b);
+        const js = JSON.parse(b);
+        for (let key of keys) {
+          js[key] = o[key].encoder.deserialize(js[key]);
+        }
+        return js;
+      },
+      serialize: function (b: Obj): string {
+        return JSON.stringify(b, function replacer(key, val) {
+          const expr = o[key];
+          if (expr) {
+            expr.encoder.serialize(val);
+          } else {
+            return val;
+          }
+        });
+      },
+    },
+    asSql: `JSON_BUILD_OBJECT(${keysAndValues})`,
+    inMem: (scope: any) => {
+      const obj = {} as Obj;
+      for (let key of keys) {
+        obj[key] = o[key].inMem(scope);
+      }
+      return obj;
+    },
+  };
+}
+
+export function ARRAY_AGG<T>(ex: Expr<T>): Expr<T[]> {
+  return {
+    encoder: arrayEncoder(ex.encoder),
+    asSql: `ARRAY_AGG(${ex.asSql})`,
+    inMem: () => {
+      throw new Error("Not implemented yet");
+    },
+  };
 }
 
 export function val<T>(
