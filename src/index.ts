@@ -125,7 +125,7 @@ export class InitialSelect<
     });
     const self = this;
     if (isString(tableOrSelect)) {
-      const relname = (tableOrSelect as string) as RelationNameInQuery;
+      const relname = tableOrSelect as string as RelationNameInQuery;
       const newInScope = {
         ...self.contents.inScope,
         ...{ [relname]: tableOrSelect },
@@ -253,7 +253,7 @@ export class BeforeProject<
         this.outerScope,
         self.contents,
         tableOrSelect,
-        (tableOrSelect as unknown) as RelationName
+        tableOrSelect as unknown as RelationName
       ) as Joining<OuterScope, InScope, FromRelName, JoiningRel> & {
         AS: <AsRelName extends string>(
           asStr: AsRelName
@@ -266,7 +266,7 @@ export class BeforeProject<
           self.outerScope,
           self.contents,
           asStr,
-          (tableOrSelect as unknown) as RelationName
+          tableOrSelect as unknown as RelationName
         ) as Joining<OuterScope, InScope, AsRelName, JoiningRel>;
         return res;
       };
@@ -289,15 +289,13 @@ export class BeforeProject<
   }
 
   WHERE(
-    cb: (
-      scope: {
-        [tableName in keyof InScope]: {
-          [colName in keyof InScope[tableName]]: Expr<
-            InScope[tableName][colName]
-          >;
-        };
-      }
-    ) => Expr<boolean>
+    cb: (scope: {
+      [tableName in keyof InScope]: {
+        [colName in keyof InScope[tableName]]: Expr<
+          InScope[tableName][colName]
+        >;
+      };
+    }) => Expr<boolean>
   ): BeforeProject<OuterScope, InScope> {
     const scope = {} as {
       [relName in keyof InScope]: {
@@ -308,8 +306,8 @@ export class BeforeProject<
     //Copy past from PROJECT!
     for (let k of object_keys(this.contents.inScope)) {
       const key: keyof InScope = k;
-      const val: RelationName | Select<OuterScope, any, any> = this.contents
-        .inScope[key];
+      const val: RelationName | Select<OuterScope, any, any> =
+        this.contents.inScope[key];
       if (isString(val)) {
         const exprs = makeExpressionsForRelationFromOuterScope(
           this.outerScope,
@@ -317,7 +315,7 @@ export class BeforeProject<
           k as string
         );
         // we need the forced cast here, because we have no typelevel proof that OuterScope[val] = InScope[key]
-        scope[key] = (exprs as unknown) as {
+        scope[key] = exprs as unknown as {
           [colName in keyof InScope[typeof key]]: Expr<
             InScope[typeof key][colName]
           >;
@@ -353,15 +351,13 @@ export class BeforeProject<
   }
 
   PROJECT<Returns extends { [columnname: string]: any }>(
-    cb: (
-      scope: {
-        [tableName in keyof InScope]: {
-          [colName in keyof InScope[tableName]]: Expr<
-            InScope[tableName][colName]
-          >;
-        };
-      }
-    ) => {
+    cb: (scope: {
+      [tableName in keyof InScope]: {
+        [colName in keyof InScope[tableName]]: Expr<
+          InScope[tableName][colName]
+        >;
+      };
+    }) => {
       [colName in keyof Returns]: Expr<Returns[colName]>;
     }
   ): Select<OuterScope, InScope, Returns> {
@@ -373,8 +369,8 @@ export class BeforeProject<
 
     for (let k of object_keys(this.contents.inScope)) {
       const key: keyof InScope = k;
-      const val: RelationName | Select<OuterScope, any, any> = this.contents
-        .inScope[key];
+      const val: RelationName | Select<OuterScope, any, any> =
+        this.contents.inScope[key];
       if (isString(val)) {
         const exprs = makeExpressionsForRelationFromOuterScope(
           this.outerScope,
@@ -382,7 +378,7 @@ export class BeforeProject<
           k as string
         );
         // we need the forced cast here, because we have no typelevel proof that OuterScope[val] = InScope[key]
-        scope[key] = (exprs as unknown) as {
+        scope[key] = exprs as unknown as {
           [colName in keyof InScope[typeof key]]: Expr<
             InScope[typeof key][colName]
           >;
@@ -436,15 +432,13 @@ export class Joining<
   }
 
   ON<NewScope extends InScope & { [k in As]: JoiningRelation }>(
-    cb: (
-      scope: {
-        [tableName in keyof NewScope]: {
-          [colName in keyof NewScope[tableName]]: Expr<
-            NewScope[tableName][colName]
-          >;
-        };
-      }
-    ) => Expr<boolean>
+    cb: (scope: {
+      [tableName in keyof NewScope]: {
+        [colName in keyof NewScope[tableName]]: Expr<
+          NewScope[tableName][colName]
+        >;
+      };
+    }) => Expr<boolean>
   ): BeforeProject<OuterScope, NewScope> {
     const scope = {} as {
       [relName in keyof NewScope]: {
@@ -467,7 +461,7 @@ export class Joining<
           k as string
         );
         // we need the forced cast here, because we have no typelevel proof that OuterScope[val] = InScope[key]
-        scope[key] = (exprs as unknown) as {
+        scope[key] = exprs as unknown as {
           [colName in keyof NewScope[typeof key]]: Expr<
             NewScope[typeof key][colName]
           >;
@@ -595,11 +589,9 @@ export class Select<
     }
   }
 
-  public runInMemory(
-    data: {
-      [k in keyof OuterScope]: OuterScope[k][];
-    }
-  ): Returns[] {
+  public runInMemory(data: {
+    [k in keyof OuterScope]: OuterScope[k][];
+  }): Returns[] {
     const f = this.contents.from;
     if (f === undefined) {
       throw new Error("No from clause");
@@ -861,11 +853,9 @@ export class InitialInsert<
   }
 
   public INTO<IntoRelName extends keyof OuterScope & string>(
-    cb: (
-      db: {
-        [tableName in keyof OuterScope & string]: tableName;
-      }
-    ) => IntoRelName
+    cb: (db: {
+      [tableName in keyof OuterScope & string]: tableName;
+    }) => IntoRelName
   ): InsertInto<OuterScope, IntoRelName> {
     const relname = cb({
       ...(() => {
@@ -897,8 +887,21 @@ export class InsertInto<
   }
 
   public VALUES(
-    values: OuterScope[IntoRelName]
+    cb: (scope: { DEFAULT: Expr<any> }) => {
+      [colName in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][colName]
+      >;
+    }
   ): Insert<OuterScope, IntoRelName> {
+    const values = cb({
+      DEFAULT: {
+        encoder: noopEncoder, // irrelevant?
+        asSql: "DEFAULT",
+        inMem: () => {
+          throw new Error("Not implemented yet :P");
+        },
+      },
+    });
     return new Insert(this.db, this.relname, values);
   }
 }
@@ -910,7 +913,11 @@ export class InsertWithReturning<
 > {
   protected db: DB<OuterScope>;
   protected relname: IntoRelName;
-  protected values: OuterScope[IntoRelName];
+  protected values: {
+    [colName in keyof OuterScope[IntoRelName]]: Expr<
+      OuterScope[IntoRelName][colName]
+    >;
+  };
   protected returning:
     | { [colName in keyof Returns]: Expr<Returns[colName]> }
     | null;
@@ -918,7 +925,11 @@ export class InsertWithReturning<
   public constructor(
     db: DB<OuterScope>,
     relname: IntoRelName,
-    values: OuterScope[IntoRelName],
+    values: {
+      [colName in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][colName]
+      >;
+    },
     returning: { [colName in keyof Returns]: Expr<Returns[colName]> } | null
   ) {
     this.db = db;
@@ -928,7 +939,6 @@ export class InsertWithReturning<
   }
 
   toSql(): string {
-    const tableDef = this.db.tables[this.relname];
     const self = this;
     const returning = this.returning;
 
@@ -938,12 +948,8 @@ export class InsertWithReturning<
       "(" + object_keys(this.values as any).join(", ") + ")",
       "VALUES ",
       "(" +
-        object_keys((self.values as unknown) as Record<FieldName, any>)
-          .map((k) => {
-            const fieldDef = tableDef.fields[k];
-            const encoder = toEncoder(fieldDef.type);
-            return encoder.serialize((self as any).values[k]);
-          })
+        object_keys(self.values)
+          .map((k) => self.values[k].asSql)
           .join(", ") +
         ")",
       returning === null
@@ -985,19 +991,21 @@ export class Insert<
   public constructor(
     db: DB<OuterScope>,
     relname: IntoRelName,
-    values: OuterScope[IntoRelName]
+    values: {
+      [colName in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][colName]
+      >;
+    }
   ) {
     super(db, relname, values, null);
   }
 
   public RETURNING<Returns extends { [columnname: string]: any }>(
-    cb: (
-      table: {
-        [field in keyof OuterScope[IntoRelName]]: Expr<
-          OuterScope[IntoRelName][field]
-        >;
-      }
-    ) => {
+    cb: (table: {
+      [field in keyof OuterScope[IntoRelName]]: Expr<
+        OuterScope[IntoRelName][field]
+      >;
+    }) => {
       [colName in keyof Returns]: Expr<Returns[colName]>;
     }
   ): InsertWithReturning<OuterScope, IntoRelName, Returns> {
@@ -1180,24 +1188,45 @@ export function val<T>(
   ? Expr<number>
   : T extends string
   ? Expr<string>
+  : T extends joda.LocalDate
+  ? Expr<joda.LocalDate>
+  : T extends joda.LocalTime
+  ? Expr<joda.LocalTime>
   : never {
   // TODO need serialization and maybe also escaping
   if (isBoolean(a)) {
+    const encoder = encoders.boolean;
     return {
-      encoder: encoders.boolean,
-      asSql: a === true ? "TRUE" : "FALSE",
+      encoder,
+      asSql: encoder.serialize(a),
       inMem: () => a,
     } as ReturnType<typeof val>;
   } else if (isNumber(a)) {
+    const encoder = encoders.number;
     return {
-      encoder: encoders.number,
-      asSql: a.toString(),
+      encoder,
+      asSql: encoder.serialize(a),
       inMem: () => a,
     } as ReturnType<typeof val>;
   } else if (isString(a)) {
+    const encoder = encoders.string;
     return {
-      encoder: encoders.string,
-      asSql: a,
+      encoder,
+      asSql: encoder.serialize(a),
+      inMem: () => a,
+    } as ReturnType<typeof val>;
+  } else if (a instanceof joda.LocalDate) {
+    const encoder = encoders.date;
+    return {
+      encoder,
+      asSql: encoder.serialize(a),
+      inMem: () => a,
+    } as ReturnType<typeof val>;
+  } else if (a instanceof joda.LocalTime) {
+    const encoder = encoders.time;
+    return {
+      encoder,
+      asSql: encoder.serialize(a),
       inMem: () => a,
     } as ReturnType<typeof val>;
   } else {
