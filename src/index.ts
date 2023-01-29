@@ -763,7 +763,7 @@ export const encoders: {
     deserialize: function (b: any) {
       return b;
     },
-    serialize: (s: string) => s,
+    serialize: (s: string) => "'" + s + "'",
   },
   instant: {
     deserialize: function (b: any) {
