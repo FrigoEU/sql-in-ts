@@ -1,14 +1,13 @@
 {
   "name": "sql-in-ts",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "main": "src/index.ts",
   "files": [
     "src/**"
   ],
   "bin": "out/cli_generator.js",
   "dependencies": {
-    "@js-joda/core": "^4.3.1",
-    "kysely": "^0.22.0",
+    "@js-joda/core": "^5.3.1",
     "lodash": "^4.17.21",
     "trader-pgsql-ast-parser": "10.5.2",
     "postgres": "^3.3.1"
