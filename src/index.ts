@@ -1284,6 +1284,6 @@ export function val<T>(
       inMem: () => a,
     } as ReturnType<typeof val>;
   } else {
-    throw new Error("Not allowed");
+    throw new Error(`Not allowed: \n${a}${JSON.stringify(a)}\n${typeof a}`);
   }
 }
