@@ -288,6 +288,68 @@ export class BeforeProject<
     }
   }
 
+  GROUP_BY(
+    cb: (scope: {
+      [tableName in keyof InScope]: {
+        [colName in keyof InScope[tableName]]: Expr<
+          InScope[tableName][colName]
+        >;
+      };
+    }) => Expr<any> | Expr<any>[]
+  ): BeforeProject<OuterScope, InScope> {
+    const scope = {} as {
+      [relName in keyof InScope]: {
+        [colName in keyof InScope[relName]]: Expr<InScope[relName][colName]>;
+      };
+    };
+
+    //Copy past from PROJECT!
+    for (let k of object_keys(this.contents.inScope)) {
+      const key: keyof InScope = k;
+      const val: RelationName | Select<OuterScope, any, any> =
+        this.contents.inScope[key];
+      if (isString(val)) {
+        const exprs = makeExpressionsForRelationFromOuterScope(
+          this.outerScope,
+          val,
+          k as string
+        );
+        // we need the forced cast here, because we have no typelevel proof that OuterScope[val] = InScope[key]
+        scope[key] = exprs as unknown as {
+          [colName in keyof InScope[typeof key]]: Expr<
+            InScope[typeof key][colName]
+          >;
+        };
+      } else {
+        type SelectReturns = GetReturnsFromSelect<typeof val>;
+        const exprs = {} as {
+          [colName in keyof SelectReturns]: Expr<SelectReturns[colName]>;
+        };
+        const returns = val.getReturns();
+        const outerKey = key;
+        let k: keyof typeof returns;
+        for (k of object_keys(returns)) {
+          if (!isString(k) || !isString(outerKey)) {
+            continue;
+          }
+          const val = returns[k];
+          exprs[k] = {
+            ...val,
+            asSql: `${outerKey}.${k}`,
+          };
+          scope[key] = exprs as any; // TS is completely lost here
+        }
+      }
+    }
+
+    const expr = cb(scope);
+
+    return new BeforeProject(this.outerScope, {
+      ...this.contents,
+      groupBy: Array.isArray(expr) ? expr : [expr],
+    });
+  }
+
   WHERE(
     cb: (scope: {
       [tableName in keyof InScope]: {
