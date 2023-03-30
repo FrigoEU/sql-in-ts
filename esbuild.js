@@ -11,11 +11,11 @@ const buildOptions = {
 };
 
 const buildExampleOptions = {
-  entryPoints: ["src/example.ts"],
+  entryPoints: ["src/example.ts", "src/aperi_index.ts"],
   bundle: true,
   sourcemap: false,
   platform: "node",
-  outfile: "out/example.js",
+  outdir: "out",
   external: ["pg-native"],
 };
 

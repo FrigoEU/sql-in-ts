@@ -2,9 +2,7 @@
   "name": "sql-in-ts",
   "version": "0.0.13",
   "main": "src/index.ts",
-  "files": [
-    "src/**"
-  ],
+  "files": ["src/**"],
   "bin": "out/cli_generator.js",
   "dependencies": {
     "@js-joda/core": "^5.3.1",
@@ -18,6 +16,7 @@
     "prepublishOnly": "npm run build",
     "start": "node esbuild.js && node ./out/index.js",
     "example": "node esbuild.js && node ./out/example.js",
+    "example_aperi": "node esbuild.js && node ./out/aperi_index.js",
     "example_debug": "node esbuild.js && node --inspect-brk ./out/example.js",
     "debug": "node esbuild.js && node --inspect-brk ./out/index.js",
     "gen": "node esbuild.js && node ./out/cli/cli_generator.js -f src/demo.sql -o out/demo.ts",
