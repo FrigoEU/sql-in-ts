@@ -19,8 +19,8 @@
     "example_aperi": "node esbuild.js && node ./out/aperi_index.js",
     "example_debug": "node esbuild.js && node --inspect-brk ./out/example.js",
     "debug": "node esbuild.js && node --inspect-brk ./out/index.js",
-    "gen": "node esbuild.js && node ./out/cli/cli_generator.js -f src/demo.sql -o out/demo.ts",
-    "gen_aperi": "node esbuild.js && node ./out/cli/cli_generator.js -f ./aperi.sql -o out/aperi.ts"
+    "gen": "node esbuild.js && node ./out/cli_generator.js -f src/demo.sql -o out/demo.ts",
+    "gen_aperi": "node esbuild.js && node ./out/cli_generator.js -f ./aperi.sql -o out/aperi.ts"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.182",

@@ -1,4 +1,11 @@
-import { includes, isBoolean, isEqual, isNumber, isString } from "lodash";
+import {
+  includes,
+  isBoolean,
+  isEqual,
+  isNull,
+  isNumber,
+  isString,
+} from "lodash";
 import { SimpleT } from "./cli/sql_parser";
 import postgres from "postgres";
 import { arrayParser } from "./arrayparser";
@@ -804,6 +811,7 @@ export const encoders: {
   time: Encoder<joda.LocalTime>;
   timestampWithoutTimeZone: Encoder<joda.LocalDateTime>;
   date: Encoder<joda.LocalDate>;
+  null: Encoder<null>;
 } = {
   boolean: {
     deserialize: function (b: any) {
@@ -811,6 +819,18 @@ export const encoders: {
     },
     serialize: function (b: boolean) {
       return b === true ? "true" : b === false ? "false" : "null";
+    },
+  },
+  null: {
+    deserialize: function (b: any) {
+      if (b === "NULL") {
+        return null;
+      } else {
+        throw new Error(`Couldn't deserialize ${b} to NULL`);
+      }
+    },
+    serialize: function (_b: null) {
+      return "NULL";
     },
   },
   number: {
@@ -1223,16 +1243,23 @@ export function object_keys<T extends object>(obj: T): Array<keyof T> {
   return Object.keys(obj) as Array<keyof T>;
 }
 
-export function EQ<A>(left: Expr<A>, right: Expr<A>): Expr<boolean>;
-export function EQ<A>(left: Expr<A>, right: Expr<A | null>): Expr<boolean>;
-export function EQ<A>(left: Expr<A | null>, right: Expr<A>): Expr<boolean>;
-export function EQ<A>(
-  left: Expr<A | null>,
-  right: Expr<A | null>
-): Expr<boolean> {
+type ExprP<A> = {
+  asSql: string;
+  inMem: (s: any) => A;
+};
+
+// Not using Expr here, because we don't need the deserialize
+// If we do, we run into covariant - contravariant problems,
+// So Expr<number|null> does not get unified with Expr<number> or vice versa
+export function EQ<A>(left: ExprP<A>, right: ExprP<A>): Expr<boolean> {
   return {
     encoder: encoders.boolean,
-    asSql: `${left.asSql} = ${right.asSql}`,
+    asSql:
+      left.asSql === "NULL"
+        ? `${right.asSql} IS NULL`
+        : right.asSql === "NULL"
+        ? `${left.asSql} IS NULL`
+        : `${left.asSql} = ${right.asSql}`,
     inMem: (scope) => {
       return isEqual(left.inMem(scope), right.inMem(scope));
     },
@@ -1308,6 +1335,8 @@ export function val<T>(
   ? Expr<joda.LocalDate>
   : T extends joda.LocalTime
   ? Expr<joda.LocalTime>
+  : T extends null
+  ? Expr<null>
   : never {
   // TODO need serialization and maybe also escaping
   if (isBoolean(a)) {
@@ -1340,6 +1369,13 @@ export function val<T>(
     } as ReturnType<typeof val>;
   } else if (a instanceof joda.LocalTime) {
     const encoder = encoders.time;
+    return {
+      encoder,
+      asSql: encoder.serialize(a),
+      inMem: () => a,
+    } as ReturnType<typeof val>;
+  } else if (isNull(a)) {
+    const encoder = encoders.null;
     return {
       encoder,
       asSql: encoder.serialize(a),

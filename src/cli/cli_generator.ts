@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import { orderBy } from "lodash";
 import * as path from "path";
 import { parse, Statement } from "trader-pgsql-ast-parser";
 import { parseSetupScripts, SimpleT } from "./sql_parser";
@@ -97,59 +98,85 @@ async function go() {
     )
     .join("\n");
 
-  const fieldDescrs: string[] = [];
-  const typeDescrs: string[] = [];
+  const tableSpecs = orderBy(parsedDbDef.tables, (t) => t.name.name).map(
+    function (table) {
+      const def_fields_descr = `
+  __meta: {
+    name: "${table.name.name}",
+    schema: "${table.name.schema || "public"}"
+  },
+  fields: {
+${table.fields
+  .map((field) => {
+    return `    ${field.name.name}: { name: "${
+      field.name.name
+    }", type: ${JSON.stringify(field.type)}},`;
+  })
+  .join("\n")}
+  }`;
 
-  for (let table of parsedDbDef.tables) {
-    const fields = table.fields
-      .map((field) => {
-        return `        ${field.name.name}: { name: "${
-          field.name.name
-        }", type: ${JSON.stringify(field.type)}},`;
-      })
-      .join("\n");
-    const fieldDescr = `
-    ${table.name.name}: {
-      __meta: {
-        name: "${table.name.name}",
-        schema: "${table.name.schema || "public"}"
-      },
-      fields: {
-${fields}
-      },
-    },`;
-    fieldDescrs.push(fieldDescr);
+      const fieldsForType = table.fields.map(
+        (field) =>
+          `  ${field.name.name}: ${showTypeAsTypescriptType(field.type)};`
+      );
 
-    const fieldsForType = table.fields.map(
-      (field) =>
-        `  ${field.name.name}: ${showTypeAsTypescriptType(field.type)};`
-    );
-    typeDescrs.push(`
-type ${table.name.name}Table = {
-${fieldsForType.join("\n")}
-}
-`);
+      const fieldsForDefType = table.fields.map(
+        (field) =>
+          `    ${field.name.name}: FieldDef<${showTypeAsTypescriptType(
+            field.type
+          )}>;`
+      );
+
+      const def_type_name = `${table.name.name}_def`;
+      const def_type = `TableDef<
+"${table.name.name}",
+  {
+${fieldsForDefType.join("\n")}
   }
+>`;
+
+      return {
+        table,
+        type_name: table.name.name + "_table",
+        def_name: `${table.name.name}_def`,
+        def_type,
+        def_type_name,
+        type: "{\n" + fieldsForType.join("\n") + "\n}",
+        def: "{" + def_fields_descr + "\n}",
+      };
+    }
+  );
 
   const fullDef = `
 import * as joda from "@js-joda/core";
-import {DB} from "sql-in-ts";
+import {DB, TableDef, FieldDef} from "sql-in-ts";
 
 ${customTypeDefinitions}
 
-export const db = new DB<MyDb>({
-  tables: {
-${fieldDescrs.join("")}
-  }
-} as const);
+${tableSpecs
+  .map(
+    (t) => `
+type ${t.type_name} = ${t.type}
+type ${t.def_type_name} = ${t.def_type};
+const ${t.def_name}: ${t.def_type_name} = ${t.def};
+`
+  )
+  .join("")}
 
 export type MyDb = {
-${parsedDbDef.tables
-  .map((t) => "  " + t.name.name + ": " + t.name.name + "Table")
+${tableSpecs
+  .map((t) => "  " + t.table.name.name + ": " + t.type_name)
   .join(",\n")}
 }
 
-${typeDescrs.join("")}
+export const db = new DB<MyDb>({
+  tables: {
+${tableSpecs
+  .map((t) => "    " + t.table.name.name + ": " + t.def_name)
+  .join(",\n")}
+  }
+});
+
 `;
   await fs.writeFile(outArg, fullDef, "utf8");
   console.log(`Wrote ${outArg}`);
